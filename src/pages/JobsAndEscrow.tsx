@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, increment, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, increment, getDoc, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
 import { EscrowContract, ArtisanProfile } from '../types';
@@ -76,72 +76,88 @@ export default function JobsAndEscrow() {
 
   const handleReleaseFunds = async (job: EscrowContract) => {
     try {
-      const platformFee = job.amount * 0.10;
+      const platformFee = Math.round(job.amount * 0.10);
       const artisanPayout = job.amount - platformFee;
 
       // 1. Fetch artisan doc to get saved bank details
       const artisanDoc = await getDoc(doc(db, 'users', job.artisanId));
-      let transferStatus = 'manual_credit';
+      let transferStatus = 'wallet_credit';
+      let transferNote = '';
+      let transferCode = '';
+      let reference = '';
 
       if (artisanDoc.exists()) {
         const artisanData = artisanDoc.data();
         const artisanEmail = artisanData.email;
-        const secretKey = localStorage.getItem('paystack_secret_key');
 
-        if (secretKey && artisanData.accountNumber && artisanData.bankCode) {
+        // If artisan has saved bank details, call server payout endpoint (uses server-side secret key)
+        if (artisanData.accountNumber && (artisanData.bankCode || artisanData.bankName)) {
           try {
-            // Create transfer recipient
-            const recRes = await fetch('/api/transferrecipient', {
+            const pRes = await fetch('/api/payout', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Paystack-Secret-Key': secretKey
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                type: 'nuban',
-                name: artisanData.accountName || artisanData.displayName,
-                account_number: artisanData.accountNumber,
-                bank_code: artisanData.bankCode,
-                currency: 'NGN'
+                accountNumber: artisanData.accountNumber,
+                bankCode: artisanData.bankCode || '058',
+                accountName: artisanData.accountName || artisanData.displayName || job.artisanName,
+                amount: artisanPayout,
+                reason: `Escrow Payout: Job "${job.title}"`
               })
             });
-            const recData = await recRes.json();
-            if (recData.success && recData.recipient_code) {
-              // Initiate Transfer
-              const trRes = await fetch('/api/transfer', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Paystack-Secret-Key': secretKey
-                },
-                body: JSON.stringify({
-                  source: 'balance',
-                  amount: Math.round(artisanPayout * 100),
-                  recipient: recData.recipient_code,
-                  reason: `Escrow Payout: Job "${job.title}"`
-                })
-              });
-              const trData = await trRes.json();
-              if (trData.success) {
-                transferStatus = 'paystack_transfer_success';
-              }
+            const pData = await pRes.json();
+            if (pData.success) {
+              transferStatus = 'paystack_direct_transfer';
+              transferCode = pData.transferCode || '';
+              reference = pData.reference || '';
+              transferNote = `Transferred ₦${artisanPayout.toLocaleString()} directly to ${artisanData.bankName} (${artisanData.accountNumber}) via Paystack. Transfer Code: ${transferCode}`;
+            } else {
+              console.warn('Paystack direct transfer declined or unconfigured, falling back to wallet credit:', pData.error);
+              transferNote = `Paystack transfer notice: ${pData.error || 'Direct transfer unavailable, credited to wallet'}`;
             }
           } catch (trErr) {
             console.error('Paystack automated transfer failed, falling back to wallet credit:', trErr);
+            transferNote = 'Network error contacting Paystack transfer API, credited to wallet';
           }
+        } else {
+          transferNote = 'Artisan has not set up bank details yet. Funds safely deposited to 9jaKonet wallet.';
         }
 
-        await updateDoc(doc(db, 'users', job.artisanId), {
-          walletBalance: increment(artisanPayout)
+        // If direct Paystack transfer succeeded, the real money is already in their bank account!
+        // If it did NOT succeed (e.g. transfer failed, or bank details missing), credit their wallet balance as a fallback!
+        if (transferStatus !== 'paystack_direct_transfer') {
+          await updateDoc(doc(db, 'users', job.artisanId), {
+            walletBalance: increment(artisanPayout)
+          });
+        }
+
+        // Add to transactions history for permanent legal/business evidence
+        await addDoc(collection(db, 'transactions'), {
+          userId: job.artisanId,
+          customerId: job.customerId,
+          jobId: job.id,
+          jobTitle: job.title,
+          type: 'escrow_payout',
+          amount: artisanPayout,
+          platformFee: platformFee,
+          totalJobAmount: job.amount,
+          bankName: artisanData.bankName || 'N/A',
+          accountNumber: artisanData.accountNumber || 'N/A',
+          transferStatus,
+          transferNote,
+          transferCode,
+          reference,
+          createdAt: Date.now()
         });
-        
+
         await updateDoc(doc(db, 'jobs', job.id), {
           status: 'completed',
           platformFee: platformFee,
           artisanPayout: artisanPayout,
-          transferStatus
+          transferStatus,
+          transferNote,
+          transferCode
         });
-        
+
         if (artisanEmail) {
           sendEmail({
             to: artisanEmail,
@@ -150,7 +166,8 @@ export default function JobsAndEscrow() {
               <h2>Payment Released Successfully!</h2>
               <p>Hi ${job.artisanName},</p>
               <p>Congratulations! ${job.customerName} has approved the job <strong>"${job.title}"</strong> and released the funds from escrow.</p>
-              <p><strong>₦${artisanPayout.toLocaleString()}</strong> has been transferred directly to your bank account (${artisanData.bankName || 'Verified Bank'}) via Paystack, and 10% platform fee has been retained.</p>
+              <p><strong>₦${artisanPayout.toLocaleString()}</strong> (90%) ${transferStatus === 'paystack_direct_transfer' ? `has been transferred directly into your bank account (${artisanData.bankName} - ${artisanData.accountNumber}) via Paystack!` : 'has been credited to your 9jaKonet wallet (you can withdraw it anytime).'}</p>
+              <p>Platform fee retained: ₦${platformFee.toLocaleString()} (10%).</p>
               <br/>
               <p>Thank you for using 9jaKonet!</p>
             `
@@ -158,7 +175,11 @@ export default function JobsAndEscrow() {
         }
       }
 
-      alert(`Funds released successfully! Artisan earned ₦${artisanPayout.toLocaleString()} (90%) and Platform earned ₦${platformFee.toLocaleString()} (10% fee). ${transferStatus === 'paystack_transfer_success' ? '⚡ Real bank transfer initiated via Paystack!' : ''}`);
+      if (transferStatus === 'paystack_direct_transfer') {
+        alert(`⚡ Funds released! ₦${artisanPayout.toLocaleString()} (90%) has been transferred DIRECTLY into ${job.artisanName}'s bank account via Paystack! 10% platform fee (₦${platformFee.toLocaleString()}) remains in Paystack.`);
+      } else {
+        alert(`Funds released! ₦${artisanPayout.toLocaleString()} (90%) credited to artisan's wallet. (${transferNote})`);
+      }
     } catch (error) {
       console.error(error);
       alert('Failed to release funds');
@@ -295,6 +316,7 @@ export default function JobsAndEscrow() {
                         }}
                         publicKey={localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_live_04b9016335193910cdba3828c46002496a7ef412'}
                         text="Fund Escrow"
+                        channels={['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer', 'eft']}
                         onSuccess={() => handleFundEscrow(job)}
                         onClose={() => console.log("Payment window closed.")}
                         className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"

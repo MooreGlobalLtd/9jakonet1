@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, updateDoc, doc, where, getDoc } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
@@ -13,7 +13,10 @@ interface Withdrawal {
   userId: string;
   amount: number;
   bankName: string;
+  bankCode?: string;
   accountNumber: string;
+  accountName?: string;
+  transferCode?: string;
   status: 'pending' | 'completed' | 'rejected';
   createdAt: number;
 }
@@ -27,9 +30,21 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [paystackKeyInput, setPaystackKeyInput] = useState(localStorage.getItem('paystack_public_key') || '');
   const [paystackSecretInput, setPaystackSecretInput] = useState(localStorage.getItem('paystack_secret_key') || '');
+  const [paystackBalance, setPaystackBalance] = useState<string | null>(null);
+  const [checkingBalance, setCheckingBalance] = useState(false);
+  const [processingWithdrawalId, setProcessingWithdrawalId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
+    // Load config from server
+    fetch('/api/paystack-config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.publicKey && !paystackKeyInput) {
+          setPaystackKeyInput(data.publicKey);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const fetchData = async () => {
@@ -73,6 +88,102 @@ export default function AdminDashboard() {
     }
   };
 
+  const executePaystackWithdrawal = async (w: Withdrawal) => {
+    const artisanUser = users.find(u => u.id === w.userId);
+    const resolvedBankCode = w.bankCode || artisanUser?.bankCode || '058';
+    const recipientName = w.accountName || artisanUser?.accountName || artisanUser?.displayName || 'Artisan Partner';
+
+    if (!confirm(`Trigger Paystack Transfer of ₦${w.amount.toLocaleString()} directly to:\n${recipientName}\n${w.bankName} (${w.accountNumber})?`)) {
+      return;
+    }
+
+    setProcessingWithdrawalId(w.id);
+    try {
+      const res = await fetch('/api/payout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          accountNumber: w.accountNumber,
+          bankCode: resolvedBankCode,
+          accountName: recipientName,
+          amount: w.amount,
+          reason: `Artisan Payout: ${recipientName}`
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        await updateDoc(doc(db, 'withdrawals', w.id), {
+          status: 'completed',
+          transferCode: data.transferCode,
+          reference: data.reference,
+          transferStatus: data.status || 'success',
+          paidAt: Date.now()
+        });
+
+        // Add to transactions log
+        await addDoc(collection(db, 'transactions'), {
+          userId: w.userId,
+          type: 'withdrawal_payout',
+          title: `Withdrawal to ${w.bankName} (${w.accountNumber})`,
+          amount: w.amount,
+          transferCode: data.transferCode,
+          reference: data.reference,
+          status: 'completed',
+          createdAt: Date.now()
+        });
+
+        // Email artisan
+        if (artisanUser?.email) {
+          sendEmail({
+            to: artisanUser.email,
+            subject: 'Withdrawal Disbursed! Funds in Bank',
+            html: `
+              <h2>Withdrawal Successful!</h2>
+              <p>Hi ${recipientName},</p>
+              <p>Your withdrawal of <strong>₦${w.amount.toLocaleString()}</strong> has been transferred directly into your bank account (${w.bankName} - ${w.accountNumber}) via Paystack.</p>
+              <p><strong>Transfer Reference:</strong> ${data.reference || data.transferCode}</p>
+              <p>Thank you for working with 9jaKonet!</p>
+            `
+          });
+        }
+
+        alert(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
+        fetchData();
+      } else {
+        alert(`❌ Paystack Transfer Failed: ${data.error || 'Unknown error'}\n\nNote: If this mentions OTP or balance, check your Paystack Dashboard to verify balance or disable Transfers OTP under Preferences.`);
+      }
+    } catch (error) {
+      console.error('Withdrawal transfer error:', error);
+      alert('Network error communicating with Paystack transfer endpoint.');
+    } finally {
+      setProcessingWithdrawalId(null);
+    }
+  };
+
+  const rejectWithdrawal = async (w: Withdrawal) => {
+    if (!confirm(`Reject this withdrawal and refund ₦${w.amount.toLocaleString()} back to the artisan's wallet?`)) return;
+
+    try {
+      await updateDoc(doc(db, 'withdrawals', w.id), {
+        status: 'rejected',
+        rejectedAt: Date.now()
+      });
+
+      await updateDoc(doc(db, 'users', w.userId), {
+        walletBalance: increment(w.amount)
+      });
+
+      alert(`Withdrawal rejected. ₦${w.amount.toLocaleString()} refunded to artisan's wallet.`);
+      fetchData();
+    } catch (error) {
+      console.error('Failed to reject withdrawal:', error);
+      alert('Failed to reject and refund withdrawal.');
+    }
+  };
+
   const markWithdrawalComplete = async (withdrawalId: string) => {
     try {
       await updateDoc(doc(db, 'withdrawals', withdrawalId), {
@@ -93,8 +204,7 @@ export default function AdminDashboard() {
               html: `
                 <h2>Withdrawal Completed!</h2>
                 <p>Hi ${artisanName},</p>
-                <p>Great news! Your withdrawal request for <strong>₦${withdrawalDoc.amount.toLocaleString()}</strong> has been successfully processed and transferred to your bank account (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber}).</p>
-                <p>Please allow up to 24 hours for the funds to reflect in your account.</p>
+                <p>Great news! Your withdrawal request for <strong>₦${withdrawalDoc.amount.toLocaleString()}</strong> has been marked as transferred to your bank account (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber}).</p>
                 <br/>
                 <p>Thank you for using 9jaKonet.</p>
               `
@@ -108,6 +218,59 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error("Failed to update withdrawal", error);
       alert("Failed to update: " + error);
+    }
+  };
+
+  const checkLiveBalance = async () => {
+    setCheckingBalance(true);
+    try {
+      const res = await fetch('/api/paystack-balance');
+      const data = await res.json();
+      if (data.success && data.balances?.length) {
+        const ngn = data.balances.find((b: any) => b.currency === 'NGN');
+        if (ngn) {
+          setPaystackBalance(`₦${(ngn.balance / 100).toLocaleString()}`);
+        } else {
+          setPaystackBalance('0 NGN');
+        }
+      } else {
+        alert(data.error || 'Failed to retrieve Paystack balance. Please check your Secret Key.');
+      }
+    } catch (error) {
+      alert('Failed to connect to Paystack balance endpoint');
+    } finally {
+      setCheckingBalance(false);
+    }
+  };
+
+  const handleSavePaystackSettings = async () => {
+    if (!paystackKeyInput && !paystackSecretInput) {
+      alert('Please enter your Paystack keys');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/paystack-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: paystackKeyInput,
+          secretKey: paystackSecretInput
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('paystack_public_key', paystackKeyInput);
+        if (paystackSecretInput) {
+          localStorage.setItem('paystack_secret_key', paystackSecretInput);
+        }
+        alert('✅ Paystack configuration saved successfully on the server! Real escrow payouts and automated bank transfers are now active.');
+        checkLiveBalance();
+      } else {
+        alert(data.error || 'Failed to save configuration');
+      }
+    } catch (error) {
+      alert('Failed to save configuration to server');
     }
   };
 
@@ -230,12 +393,17 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* All Users List */}
+        {/* Pending Withdrawals */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <ArrowUpRight className="h-5 w-5 text-emerald-600" />
-              Pending Withdrawals
+            <CardTitle className="flex items-center justify-between text-lg">
+              <div className="flex items-center gap-2">
+                <ArrowUpRight className="h-5 w-5 text-emerald-600" />
+                Pending Artisan Withdrawals
+              </div>
+              <span className="text-xs font-normal text-slate-500">
+                {withdrawals.filter(w => w.status === 'pending').length} pending
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -247,24 +415,59 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 {withdrawals.filter(w => w.status === 'pending').map(w => {
                   const reqUser = users.find(u => u.id === w.userId);
+                  const isProcessing = processingWithdrawalId === w.id;
                   return (
                     <div key={w.id} className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="font-bold text-slate-900 text-lg">₦{w.amount.toLocaleString()}</p>
-                          <p className="font-medium text-slate-700">{reqUser?.displayName || 'Unknown User'}</p>
+                          <p className="font-bold text-slate-900 text-xl">₦{w.amount.toLocaleString()}</p>
+                          <p className="font-semibold text-slate-800">{reqUser?.displayName || w.accountName || 'Artisan Partner'}</p>
+                          <p className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleString()}</p>
                         </div>
-                        <Button size="sm" type="button" className="bg-emerald-600 hover:bg-emerald-700 z-10 relative cursor-pointer" onClick={(e) => {
-                          e.preventDefault();
-                          markWithdrawalComplete(w.id);
-                        }}>
-                          Mark Paid
-                        </Button>
+                        <div className="flex flex-col gap-1.5 items-end">
+                          <Button 
+                            size="sm" 
+                            type="button" 
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer flex items-center gap-1.5"
+                            disabled={isProcessing}
+                            onClick={() => executePaystackWithdrawal(w)}
+                          >
+                            {isProcessing ? 'Transferring...' : '⚡ Pay via Paystack'}
+                          </Button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => markWithdrawalComplete(w.id)}
+                              className="text-xs text-slate-600 hover:text-slate-900 underline"
+                            >
+                              Mark Paid Manually
+                            </button>
+                            <span className="text-slate-300">•</span>
+                            <button
+                              type="button"
+                              onClick={() => rejectWithdrawal(w)}
+                              className="text-xs text-red-600 hover:text-red-800 underline"
+                            >
+                              Reject & Refund
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="bg-slate-50 p-3 rounded-md border border-slate-100 text-sm">
-                        <p><span className="text-slate-500">Bank:</span> <span className="font-semibold text-slate-900">{w.bankName}</span></p>
-                        <p><span className="text-slate-500">Account:</span> <span className="font-mono font-semibold text-slate-900">{w.accountNumber}</span></p>
-                        <p className="text-xs text-amber-600 mt-2">Transfer this exactly via Paystack Dashboard first!</p>
+                      <div className="bg-slate-50 p-3 rounded-md border border-slate-100 text-sm grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-xs text-slate-500 block">Bank</span>
+                          <span className="font-semibold text-slate-900">{w.bankName}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500 block">Account Number</span>
+                          <span className="font-mono font-semibold text-slate-900">{w.accountNumber}</span>
+                        </div>
+                        {w.accountName && (
+                          <div className="col-span-2">
+                            <span className="text-xs text-slate-500 block">Verified Account Name</span>
+                            <span className="font-medium text-emerald-800">{w.accountName}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -274,53 +477,70 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Paystack Key Configuration */}
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Banknote className="h-5 w-5 text-emerald-600" />
-              Paystack Gateway Configuration (Live / Test)
-            </CardTitle>
+        {/* Paystack Gateway Configuration */}
+        <Card className="md:col-span-2 border-emerald-200">
+          <CardHeader className="bg-emerald-50/50 border-b border-emerald-100 pb-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <CardTitle className="flex items-center gap-2 text-lg text-emerald-950">
+                <Banknote className="h-5 w-5 text-emerald-600" />
+                Paystack Gateway Configuration (Live Payouts & Escrow)
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                {paystackBalance && (
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-sm">
+                    Paystack NGN Balance: {paystackBalance}
+                  </span>
+                )}
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={checkLiveBalance} 
+                  disabled={checkingBalance}
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                >
+                  {checkingBalance ? 'Checking...' : 'Check Live Balance'}
+                </Button>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Public Key (Client Checkout)</label>
-                <div className="flex gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="e.g. pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono text-xs"
-                    value={paystackKeyInput}
-                    onChange={(e) => setPaystackKeyInput(e.target.value)}
-                  />
-                  <Button onClick={() => {
-                    localStorage.setItem('paystack_public_key', paystackKeyInput);
-                    alert('Paystack Public Key saved successfully!');
-                  }}>
-                    Save Public
-                  </Button>
-                </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                <strong>Important for Instant Transfers:</strong> To enable automatic bank payouts, ensure your Paystack account has sufficient balance, and that <em>Transfers OTP</em> is disabled on your Paystack Dashboard (Settings &gt; Preferences &gt; Transfers).
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Secret Key (Server Payouts & Transfers)</label>
-                <div className="flex gap-4">
-                  <input 
-                    type="password" 
-                    placeholder="e.g. sk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono text-xs"
-                    value={paystackSecretInput}
-                    onChange={(e) => setPaystackSecretInput(e.target.value)}
-                  />
-                  <Button className="bg-slate-900 hover:bg-slate-800 text-white" onClick={() => {
-                    localStorage.setItem('paystack_secret_key', paystackSecretInput);
-                    alert('Paystack Secret Key saved successfully! Real bank payouts and transfers are now fully enabled.');
-                  }}>
-                    Save Secret
-                  </Button>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Required for instant artisan bank payouts when funds are released from escrow.</p>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Public Key (Client Checkout)</label>
+                <input 
+                  type="text" 
+                  placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs"
+                  value={paystackKeyInput}
+                  onChange={(e) => setPaystackKeyInput(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Secret Key (Automated Bank Transfers &amp; Payouts)</label>
+                <input 
+                  type="password" 
+                  placeholder="sk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs"
+                  value={paystackSecretInput}
+                  onChange={(e) => setPaystackSecretInput(e.target.value)}
+                />
+                <p className="text-xs text-slate-500 mt-1">This key is securely stored on the server to execute instant 90% payouts to artisans when customers release escrow funds.</p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button 
+                  type="button" 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 h-11"
+                  onClick={handleSavePaystackSettings}
+                >
+                  Save Paystack Configuration
+                </Button>
               </div>
             </div>
           </CardContent>

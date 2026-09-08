@@ -221,7 +221,7 @@ export default function Messages() {
                 <h4 className="text-sm font-semibold mb-2">Create New Job Offer</h4>
                 <div className="flex gap-2">
                   <Input id="job-title-input" placeholder="Job Title (e.g. Fix AC)" className="flex-1 bg-white" />
-                  <Input id="job-amount-input" type="number" placeholder="Amount (₦)" className="w-32 bg-white" />
+                  <Input id="job-amount-input" type="number" min="100" placeholder="Amount (min ₦100)" className="w-36 bg-white" />
                   <Button 
                     size="sm"
                     onClick={() => {
@@ -231,7 +231,14 @@ export default function Messages() {
                       const title = titleInput?.value;
                       const amount = parseInt(amountInput?.value || '0');
                       
-                      if (!title || amount <= 0) return;
+                      if (!title) {
+                        alert('Please enter a job title');
+                        return;
+                      }
+                      if (!amount || amount < 100) {
+                        alert('Amount must be at least ₦100 for Paystack to activate Bank Transfer, OPay, and all payment methods.');
+                        return;
+                      }
 
                       // Create Escrow Job
                       addDoc(collection(db, 'jobs'), {
