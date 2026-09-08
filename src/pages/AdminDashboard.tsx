@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   const [jobs, setJobs] = useState<EscrowContract[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [paystackKeyInput, setPaystackKeyInput] = useState(localStorage.getItem('paystack_public_key') || '');
 
   useEffect(() => {
     fetchData();
@@ -269,6 +270,38 @@ export default function AdminDashboard() {
                 })}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Paystack Key Configuration */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Banknote className="h-5 w-5 text-emerald-600" />
+              Paystack Gateway Configuration (Live / Test)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Enter your Paystack Public Key (e.g. <code>pk_live_...</code> or <code>pk_test_...</code>) here to power secure customer escrow funding. This key is saved securely in your browser and used instantly when customers click Fund Escrow.
+              </p>
+              <div className="flex gap-4">
+                <input 
+                  type="text" 
+                  placeholder="e.g. pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={paystackKeyInput}
+                  onChange={(e) => setPaystackKeyInput(e.target.value)}
+                />
+                <Button onClick={() => {
+                  localStorage.setItem('paystack_public_key', paystackKeyInput);
+                  alert('Paystack Public Key saved successfully!');
+                }}>
+                  Save Key
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
