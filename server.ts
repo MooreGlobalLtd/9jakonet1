@@ -20,6 +20,10 @@ try {
 function getPaystackSecretKey(req?: express.Request): string {
   const headerKey = req?.headers['x-paystack-secret-key'] as string;
   if (headerKey && headerKey.trim()) return headerKey.trim();
+  const bodyKey = req?.body?.secretKey as string;
+  if (bodyKey && bodyKey.trim()) return bodyKey.trim();
+  const queryKey = req?.query?.secretKey as string;
+  if (queryKey && queryKey.trim()) return queryKey.trim();
   if (paystackConfig.secretKey && paystackConfig.secretKey.trim()) return paystackConfig.secretKey.trim();
   if (process.env.PAYSTACK_SECRET_KEY && process.env.PAYSTACK_SECRET_KEY.trim()) return process.env.PAYSTACK_SECRET_KEY.trim();
   return '';
@@ -86,7 +90,7 @@ async function startServer() {
     });
   });
 
-  app.post('/api/admin/paystack-config', (req, res) => {
+  const handleSaveConfig = (req: express.Request, res: express.Response) => {
     const { publicKey, secretKey } = req.body;
     if (publicKey) paystackConfig.publicKey = publicKey.trim();
     if (secretKey) paystackConfig.secretKey = secretKey.trim();
@@ -103,7 +107,10 @@ async function startServer() {
       console.error('Failed to write paystack-config.json:', error);
       res.status(500).json({ success: false, error: 'Failed to persist Paystack configuration.' });
     }
-  });
+  };
+
+  app.post('/api/admin/paystack-config', handleSaveConfig);
+  app.post('/api/paystack-config', handleSaveConfig);
 
   // Check Paystack Live Balance
   app.get('/api/paystack-balance', async (req, res) => {

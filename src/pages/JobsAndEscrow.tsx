@@ -15,8 +15,21 @@ export default function JobsAndEscrow() {
   const { user, init } = useAuthStore();
   const [jobs, setJobs] = useState<EscrowContract[]>([]);
   const [reviewForm, setReviewForm] = useState<{ [jobId: string]: { score: number, comment: string } }>({});
+  const [paystackPublicKey, setPaystackPublicKey] = useState<string>(
+    localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_live_04b9016335193910cdba3828c46002496a7ef412'
+  );
 
   useEffect(() => {
+    // Load Paystack public key from Firestore system_config
+    getDoc(doc(db, 'system_config', 'paystack'))
+      .then(snap => {
+        if (snap.exists() && snap.data().publicKey) {
+          setPaystackPublicKey(snap.data().publicKey);
+          localStorage.setItem('paystack_public_key', snap.data().publicKey);
+        }
+      })
+      .catch(err => console.warn('Could not load public key from Firestore:', err));
+
     if (!user) return;
 
     // Listen to jobs where user is either customer or artisan
@@ -93,15 +106,30 @@ export default function JobsAndEscrow() {
         // If artisan has saved bank details, call server payout endpoint (uses server-side secret key)
         if (artisanData.accountNumber && (artisanData.bankCode || artisanData.bankName)) {
           try {
+            // Retrieve system Paystack key from Firestore if available
+            let sysSecretKey = localStorage.getItem('paystack_secret_key') || '';
+            try {
+              const cfgSnap = await getDoc(doc(db, 'system_config', 'paystack'));
+              if (cfgSnap.exists() && cfgSnap.data().secretKey) {
+                sysSecretKey = cfgSnap.data().secretKey;
+              }
+            } catch (cfgErr) {
+              console.warn('System config load notice:', cfgErr);
+            }
+
             const pRes = await fetch('/api/payout', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                ...(sysSecretKey ? { 'X-Paystack-Secret-Key': sysSecretKey } : {})
+              },
               body: JSON.stringify({
                 accountNumber: artisanData.accountNumber,
                 bankCode: artisanData.bankCode || '058',
                 accountName: artisanData.accountName || artisanData.displayName || job.artisanName,
                 amount: artisanPayout,
-                reason: `Escrow Payout: Job "${job.title}"`
+                reason: `Escrow Payout: Job "${job.title}"`,
+                secretKey: sysSecretKey
               })
             });
             const pData = await pRes.json();
@@ -314,7 +342,7 @@ export default function JobsAndEscrow() {
                           phone: user.phone || '',
                           custom_fields: []
                         }}
-                        publicKey={localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_live_04b9016335193910cdba3828c46002496a7ef412'}
+                        publicKey={paystackPublicKey}
                         text="Fund Escrow"
                         channels={['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer', 'eft']}
                         onSuccess={() => handleFundEscrow(job)}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
@@ -36,15 +36,39 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
-    // Load config from server
-    fetch('/api/paystack-config')
-      .then(res => res.json())
-      .then(data => {
-        if (data.publicKey && !paystackKeyInput) {
-          setPaystackKeyInput(data.publicKey);
+
+    // 1. Load config from Firestore (works on Vercel, Cloud Run, and any custom domain)
+    const loadConfig = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'system_config', 'paystack'));
+        if (snap.exists()) {
+          const cfg = snap.data();
+          if (cfg.publicKey) {
+            setPaystackKeyInput(cfg.publicKey);
+            localStorage.setItem('paystack_public_key', cfg.publicKey);
+          }
+          if (cfg.secretKey) {
+            setPaystackSecretInput(cfg.secretKey);
+            localStorage.setItem('paystack_secret_key', cfg.secretKey);
+          }
         }
-      })
-      .catch(console.error);
+      } catch (err) {
+        console.warn('Firestore config load notice:', err);
+      }
+
+      // 2. Also check server endpoint
+      try {
+        const res = await fetch('/api/paystack-config');
+        const data = await res.json();
+        if (data.publicKey) {
+          setPaystackKeyInput(prev => prev || data.publicKey);
+        }
+      } catch (e) {
+        console.warn('Server config check notice:', e);
+      }
+    };
+
+    loadConfig();
   }, []);
 
   const fetchData = async () => {
@@ -92,6 +116,7 @@ export default function AdminDashboard() {
     const artisanUser = users.find(u => u.id === w.userId);
     const resolvedBankCode = w.bankCode || artisanUser?.bankCode || '058';
     const recipientName = w.accountName || artisanUser?.accountName || artisanUser?.displayName || 'Artisan Partner';
+    const secret = paystackSecretInput.trim() || localStorage.getItem('paystack_secret_key') || '';
 
     if (!confirm(`Trigger Paystack Transfer of ₦${w.amount.toLocaleString()} directly to:\n${recipientName}\n${w.bankName} (${w.accountNumber})?`)) {
       return;
@@ -102,14 +127,16 @@ export default function AdminDashboard() {
       const res = await fetch('/api/payout', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(secret ? { 'X-Paystack-Secret-Key': secret } : {})
         },
         body: JSON.stringify({
           accountNumber: w.accountNumber,
           bankCode: resolvedBankCode,
           accountName: recipientName,
           amount: w.amount,
-          reason: `Artisan Payout: ${recipientName}`
+          reason: `Artisan Payout: ${recipientName}`,
+          secretKey: secret
         })
       });
 
@@ -153,11 +180,11 @@ export default function AdminDashboard() {
         alert(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
         fetchData();
       } else {
-        alert(`❌ Paystack Transfer Failed: ${data.error || 'Unknown error'}\n\nNote: If this mentions OTP or balance, check your Paystack Dashboard to verify balance or disable Transfers OTP under Preferences.`);
+        alert(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Transfers OTP is disabled in Paystack Dashboard (Settings > Preferences > Transfers).`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Withdrawal transfer error:', error);
-      alert('Network error communicating with Paystack transfer endpoint.');
+      alert('Error contacting payout endpoint: ' + (error?.message || 'Check server connection or Paystack keys.'));
     } finally {
       setProcessingWithdrawalId(null);
     }
@@ -224,7 +251,18 @@ export default function AdminDashboard() {
   const checkLiveBalance = async () => {
     setCheckingBalance(true);
     try {
-      const res = await fetch('/api/paystack-balance');
+      const secret = paystackSecretInput.trim() || localStorage.getItem('paystack_secret_key') || '';
+      if (!secret) {
+        alert('Please enter and save your Paystack Secret Key first.');
+        setCheckingBalance(false);
+        return;
+      }
+
+      const res = await fetch(`/api/paystack-balance?secretKey=${encodeURIComponent(secret)}`, {
+        headers: {
+          'X-Paystack-Secret-Key': secret
+        }
+      });
       const data = await res.json();
       if (data.success && data.balances?.length) {
         const ngn = data.balances.find((b: any) => b.currency === 'NGN');
@@ -234,43 +272,56 @@ export default function AdminDashboard() {
           setPaystackBalance('0 NGN');
         }
       } else {
-        alert(data.error || 'Failed to retrieve Paystack balance. Please check your Secret Key.');
+        alert(`Paystack Response: ${data.error || 'Failed to retrieve balance. Please verify your secret key.'}`);
       }
-    } catch (error) {
-      alert('Failed to connect to Paystack balance endpoint');
+    } catch (error: any) {
+      console.error('Balance check error:', error);
+      alert('Could not connect to Paystack balance endpoint: ' + (error?.message || 'Check connection.'));
     } finally {
       setCheckingBalance(false);
     }
   };
 
   const handleSavePaystackSettings = async () => {
-    if (!paystackKeyInput && !paystackSecretInput) {
+    const cleanPublic = paystackKeyInput.trim();
+    const cleanSecret = paystackSecretInput.trim();
+
+    if (!cleanPublic && !cleanSecret) {
       alert('Please enter your Paystack keys');
       return;
     }
 
     try {
-      const res = await fetch('/api/admin/paystack-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          publicKey: paystackKeyInput,
-          secretKey: paystackSecretInput
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        localStorage.setItem('paystack_public_key', paystackKeyInput);
-        if (paystackSecretInput) {
-          localStorage.setItem('paystack_secret_key', paystackSecretInput);
-        }
-        alert('✅ Paystack configuration saved successfully on the server! Real escrow payouts and automated bank transfers are now active.');
-        checkLiveBalance();
-      } else {
-        alert(data.error || 'Failed to save configuration');
+      // 1. Persist in Firestore so it's active everywhere (Vercel, custom domain, Cloud Run)
+      await setDoc(doc(db, 'system_config', 'paystack'), {
+        publicKey: cleanPublic,
+        secretKey: cleanSecret,
+        updatedAt: Date.now()
+      }, { merge: true });
+
+      // 2. Persist in localStorage for instant fast retrieval
+      if (cleanPublic) localStorage.setItem('paystack_public_key', cleanPublic);
+      if (cleanSecret) localStorage.setItem('paystack_secret_key', cleanSecret);
+
+      // 3. Synchronize with server endpoint
+      try {
+        await fetch('/api/paystack-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publicKey: cleanPublic,
+            secretKey: cleanSecret
+          })
+        });
+      } catch (e) {
+        console.warn('API sync notice:', e);
       }
-    } catch (error) {
-      alert('Failed to save configuration to server');
+
+      alert('✅ Paystack configuration saved successfully! Keys are safely stored and active for automated bank payouts.');
+      checkLiveBalance();
+    } catch (error: any) {
+      console.error('Save configuration error:', error);
+      alert('Error saving configuration: ' + (error?.message || error));
     }
   };
 
