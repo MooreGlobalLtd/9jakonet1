@@ -235,20 +235,40 @@ export default function JobsAndEscrow() {
                     
                     {/* Role Based Actions */}
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'pending_escrow' && (
-                      <PaystackButton
-                        email={user.email}
-                        amount={job.amount * 100}
-                        metadata={{
-                          name: user.displayName,
-                          phone: user.phone || '',
-                          custom_fields: []
-                        }}
-                        publicKey={(import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_test_04b9016335193910cdba3828c46002496a7ef412'}
-                        text="Fund Escrow"
-                        onSuccess={() => handleFundEscrow(job)}
-                        onClose={() => console.log("Payment window closed.")}
-                        className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"
-                      />
+                      (() => {
+                        const pk = (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY;
+                        if (pk && pk.startsWith('pk_')) {
+                          return (
+                            <PaystackButton
+                              email={user.email}
+                              amount={job.amount * 100}
+                              metadata={{
+                                name: user.displayName,
+                                phone: user.phone || '',
+                                custom_fields: []
+                              }}
+                              publicKey={pk}
+                              text="Fund Escrow"
+                              onSuccess={() => handleFundEscrow(job)}
+                              onClose={() => console.log("Payment window closed.")}
+                              className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"
+                            />
+                          );
+                        } else {
+                          return (
+                            <Button 
+                              onClick={() => {
+                                if (window.confirm(`Fund Escrow of ₦${job.amount.toLocaleString()}? (Click OK to simulate successful Paystack escrow funding)`)) {
+                                  handleFundEscrow(job);
+                                }
+                              }} 
+                              className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white cursor-pointer"
+                            >
+                              Fund Escrow
+                            </Button>
+                          );
+                        }
+                      })()
                     )}
                     
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'in_progress' && (
