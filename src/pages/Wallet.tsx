@@ -64,6 +64,44 @@ export default function Wallet() {
   const [verificationError, setVerificationError] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [savingBank, setSavingBank] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      if (user.accountNumber) setAccountNumber(user.accountNumber);
+      if (user.bankName) setBankName(user.bankName);
+      if (user.bankCode) setSelectedBankCode(user.bankCode);
+      if (user.accountName) {
+        setResolvedAccountName(user.accountName);
+        setAccountVerified(true);
+      }
+    }
+  }, [user]);
+
+  const handleSaveBankDetails = async () => {
+    if (!user || !bankName || !accountNumber || !accountVerified) {
+      alert('Please enter and verify your bank account details first.');
+      return;
+    }
+    setSavingBank(true);
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        bankName,
+        bankCode: selectedBankCode,
+        accountNumber,
+        accountName: resolvedAccountName
+      });
+      useAuthStore.setState({
+        user: { ...user, bankName, bankCode: selectedBankCode, accountNumber, accountName: resolvedAccountName }
+      });
+      alert('Bank account details saved successfully for automatic direct payouts!');
+    } catch (error) {
+      console.error('Failed to save bank details:', error);
+      alert('Failed to save bank details.');
+    } finally {
+      setSavingBank(false);
+    }
+  };
 
   useEffect(() => {
     // Fetch banks from backend API
@@ -327,13 +365,24 @@ export default function Wallet() {
                   </div>
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 h-12 text-lg"
-                  disabled={submitting || !user.walletBalance || user.walletBalance <= 0 || !accountVerified}
-                >
-                  {submitting ? 'Processing...' : 'Request Withdrawal'}
-                </Button>
+                <div className="flex gap-3 mt-4">
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    onClick={handleSaveBankDetails}
+                    className="flex-1 h-12 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                    disabled={savingBank || !accountVerified}
+                  >
+                    {savingBank ? 'Saving...' : 'Save Bank for Direct Payouts'}
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-12 text-lg"
+                    disabled={submitting || !user.walletBalance || user.walletBalance <= 0 || !accountVerified}
+                  >
+                    {submitting ? 'Processing...' : 'Request Withdrawal'}
+                  </Button>
+                </div>
               </form>
             </div>
           )}

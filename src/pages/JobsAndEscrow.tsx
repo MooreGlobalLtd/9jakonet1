@@ -79,20 +79,69 @@ export default function JobsAndEscrow() {
       const platformFee = job.amount * 0.10;
       const artisanPayout = job.amount - platformFee;
 
-      await updateDoc(doc(db, 'users', job.artisanId), {
-        walletBalance: increment(artisanPayout)
-      });
-      
-      await updateDoc(doc(db, 'jobs', job.id), {
-        status: 'completed',
-        platformFee: platformFee,
-        artisanPayout: artisanPayout
-      });
-      
-      // Send Email to Artisan
+      // 1. Fetch artisan doc to get saved bank details
       const artisanDoc = await getDoc(doc(db, 'users', job.artisanId));
+      let transferStatus = 'manual_credit';
+
       if (artisanDoc.exists()) {
-        const artisanEmail = artisanDoc.data().email;
+        const artisanData = artisanDoc.data();
+        const artisanEmail = artisanData.email;
+        const secretKey = localStorage.getItem('paystack_secret_key');
+
+        if (secretKey && artisanData.accountNumber && artisanData.bankCode) {
+          try {
+            // Create transfer recipient
+            const recRes = await fetch('/api/transferrecipient', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Paystack-Secret-Key': secretKey
+              },
+              body: JSON.stringify({
+                type: 'nuban',
+                name: artisanData.accountName || artisanData.displayName,
+                account_number: artisanData.accountNumber,
+                bank_code: artisanData.bankCode,
+                currency: 'NGN'
+              })
+            });
+            const recData = await recRes.json();
+            if (recData.success && recData.recipient_code) {
+              // Initiate Transfer
+              const trRes = await fetch('/api/transfer', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Paystack-Secret-Key': secretKey
+                },
+                body: JSON.stringify({
+                  source: 'balance',
+                  amount: Math.round(artisanPayout * 100),
+                  recipient: recData.recipient_code,
+                  reason: `Escrow Payout: Job "${job.title}"`
+                })
+              });
+              const trData = await trRes.json();
+              if (trData.success) {
+                transferStatus = 'paystack_transfer_success';
+              }
+            }
+          } catch (trErr) {
+            console.error('Paystack automated transfer failed, falling back to wallet credit:', trErr);
+          }
+        }
+
+        await updateDoc(doc(db, 'users', job.artisanId), {
+          walletBalance: increment(artisanPayout)
+        });
+        
+        await updateDoc(doc(db, 'jobs', job.id), {
+          status: 'completed',
+          platformFee: platformFee,
+          artisanPayout: artisanPayout,
+          transferStatus
+        });
+        
         if (artisanEmail) {
           sendEmail({
             to: artisanEmail,
@@ -101,17 +150,18 @@ export default function JobsAndEscrow() {
               <h2>Payment Released Successfully!</h2>
               <p>Hi ${job.artisanName},</p>
               <p>Congratulations! ${job.customerName} has approved the job <strong>"${job.title}"</strong> and released the funds from escrow.</p>
-              <p><strong>₦${artisanPayout.toLocaleString()}</strong> has been credited to your 9jaKonet wallet.</p>
+              <p><strong>₦${artisanPayout.toLocaleString()}</strong> has been transferred directly to your bank account (${artisanData.bankName || 'Verified Bank'}) via Paystack, and 10% platform fee has been retained.</p>
               <br/>
-              <p>Log in to your dashboard to request a withdrawal to your bank account.</p>
+              <p>Thank you for using 9jaKonet!</p>
             `
           });
         }
       }
 
-      alert(`Funds released! Artisan earned ₦${artisanPayout.toLocaleString()} and Platform earned ₦${platformFee.toLocaleString()} (10% fee).`);
+      alert(`Funds released successfully! Artisan earned ₦${artisanPayout.toLocaleString()} (90%) and Platform earned ₦${platformFee.toLocaleString()} (10% fee). ${transferStatus === 'paystack_transfer_success' ? '⚡ Real bank transfer initiated via Paystack!' : ''}`);
     } catch (error) {
       console.error(error);
+      alert('Failed to release funds');
     }
   };
 

@@ -96,11 +96,11 @@ async function startServer() {
     }
 
     try {
-      const secretKey = process.env.PAYSTACK_SECRET_KEY;
+      const secretKey = req.headers['x-paystack-secret-key'] || process.env.PAYSTACK_SECRET_KEY;
       if (!secretKey) {
         return res.status(400).json({ 
           success: false, 
-          error: 'PAYSTACK_SECRET_KEY is not configured on the server environment variables.' 
+          error: 'PAYSTACK_SECRET_KEY is not configured on server or admin settings.' 
         });
       }
 
@@ -117,6 +117,62 @@ async function startServer() {
     } catch (error) {
       console.error('Bank account resolution error:', error);
       return res.status(500).json({ success: false, error: 'Failed to connect to payment gateway for account verification.' });
+    }
+  });
+
+  // Paystack Transfer Recipient API
+  app.post('/api/transferrecipient', async (req, res) => {
+    const { type = 'nuban', name, account_number, bank_code, currency = 'NGN' } = req.body;
+    const secretKey = req.headers['x-paystack-secret-key'] || process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) {
+      return res.status(400).json({ success: false, error: 'PAYSTACK_SECRET_KEY is not configured on server or admin settings.' });
+    }
+    try {
+      const response = await fetch('https://api.paystack.co/transferrecipient', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ type, name, account_number, bank_code, currency })
+      });
+      const data = await response.json();
+      if (data.status && data.data) {
+        res.json({ success: true, recipient_code: data.data.recipient_code, data: data.data });
+      } else {
+        res.status(400).json({ success: false, error: data.message || 'Failed to create transfer recipient' });
+      }
+    } catch (error) {
+      console.error('Transfer recipient error:', error);
+      res.status(500).json({ success: false, error: 'Failed to connect to Paystack Transfer API' });
+    }
+  });
+
+  // Paystack Transfer API (Instant Payout)
+  app.post('/api/transfer', async (req, res) => {
+    const { source = 'balance', amount, recipient, reason } = req.body;
+    const secretKey = req.headers['x-paystack-secret-key'] || process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) {
+      return res.status(400).json({ success: false, error: 'PAYSTACK_SECRET_KEY is not configured on server or admin settings.' });
+    }
+    try {
+      const response = await fetch('https://api.paystack.co/transfer', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ source, amount, recipient, reason })
+      });
+      const data = await response.json();
+      if (data.status && data.data) {
+        res.json({ success: true, transfer_code: data.data.transfer_code, status: data.data.status, data: data.data });
+      } else {
+        res.status(400).json({ success: false, error: data.message || 'Failed to initiate transfer' });
+      }
+    } catch (error) {
+      console.error('Transfer error:', error);
+      res.status(500).json({ success: false, error: 'Failed to connect to Paystack Transfer API' });
     }
   });
 

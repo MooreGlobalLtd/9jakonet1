@@ -11,6 +11,10 @@ export interface User {
   lga?: string;
   address?: string;
   walletBalance?: number;
+  bankName?: string;
+  bankCode?: string;
+  accountNumber?: string;
+  accountName?: string;
   createdAt: number;
 }
 

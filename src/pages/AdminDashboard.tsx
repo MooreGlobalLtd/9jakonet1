@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [loading, setLoading] = useState(true);
   const [paystackKeyInput, setPaystackKeyInput] = useState(localStorage.getItem('paystack_public_key') || '');
+  const [paystackSecretInput, setPaystackSecretInput] = useState(localStorage.getItem('paystack_secret_key') || '');
 
   useEffect(() => {
     fetchData();
@@ -282,24 +283,44 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600">
-                Enter your Paystack Public Key (e.g. <code>pk_live_...</code> or <code>pk_test_...</code>) here to power secure customer escrow funding. This key is saved securely in your browser and used instantly when customers click Fund Escrow.
-              </p>
-              <div className="flex gap-4">
-                <input 
-                  type="text" 
-                  placeholder="e.g. pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={paystackKeyInput}
-                  onChange={(e) => setPaystackKeyInput(e.target.value)}
-                />
-                <Button onClick={() => {
-                  localStorage.setItem('paystack_public_key', paystackKeyInput);
-                  alert('Paystack Public Key saved successfully!');
-                }}>
-                  Save Key
-                </Button>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Public Key (Client Checkout)</label>
+                <div className="flex gap-4">
+                  <input 
+                    type="text" 
+                    placeholder="e.g. pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono text-xs"
+                    value={paystackKeyInput}
+                    onChange={(e) => setPaystackKeyInput(e.target.value)}
+                  />
+                  <Button onClick={() => {
+                    localStorage.setItem('paystack_public_key', paystackKeyInput);
+                    alert('Paystack Public Key saved successfully!');
+                  }}>
+                    Save Public
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Paystack Secret Key (Server Payouts & Transfers)</label>
+                <div className="flex gap-4">
+                  <input 
+                    type="password" 
+                    placeholder="e.g. sk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono text-xs"
+                    value={paystackSecretInput}
+                    onChange={(e) => setPaystackSecretInput(e.target.value)}
+                  />
+                  <Button className="bg-slate-900 hover:bg-slate-800 text-white" onClick={() => {
+                    localStorage.setItem('paystack_secret_key', paystackSecretInput);
+                    alert('Paystack Secret Key saved successfully! Real bank payouts and transfers are now fully enabled.');
+                  }}>
+                    Save Secret
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Required for instant artisan bank payouts when funds are released from escrow.</p>
               </div>
             </div>
           </CardContent>
