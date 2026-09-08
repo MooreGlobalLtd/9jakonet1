@@ -1,0 +1,6 @@
+{
+  "name": "9jaKonet NG",
+  "description": "Local services marketplace connecting verified artisans with customers in Nigeria.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,363 @@
+import React, { useState, useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
+import { db } from '../lib/firebase';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, increment } from 'firebase/firestore';
+import { Banknote, Building2, User, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+
+const NIGERIAN_BANKS = [
+  "Access Bank",
+  "Access Bank (Diamond)",
+  "Ecobank",
+  "Fidelity Bank",
+  "First Bank of Nigeria",
+  "First City Monument Bank (FCMB)",
+  "Guaranty Trust Bank (GTB)",
+  "Heritage Bank",
+  "Keystone Bank",
+  "Kuda Bank",
+  "Moniepoint Microfinance Bank",
+  "OPay",
+  "Palmpay",
+  "Polaris Bank",
+  "Providus Bank",
+  "Stanbic IBTC Bank",
+  "Standard Chartered Bank",
+  "Sterling Bank",
+  "Union Bank of Nigeria",
+  "United Bank for Africa (UBA)",
+  "Unity Bank",
+  "Wema Bank",
+  "Zenith Bank"
+];
+
+interface Bank {
+  name: string;
+  code: string;
+}
+
+interface Withdrawal {
+  id: string;
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  status: 'pending' | 'completed' | 'rejected';
+  createdAt: number;
+}
+
+export default function Wallet() {
+  const { user } = useAuthStore();
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [selectedBankCode, setSelectedBankCode] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  
+  // Bank Account Resolution State
+  const [verifyingAccount, setVerifyingAccount] = useState(false);
+  const [resolvedAccountName, setResolvedAccountName] = useState('');
+  const [accountVerified, setAccountVerified] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Fetch banks from backend API
+    fetch('/api/banks')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.banks) {
+          setBanks(data.banks);
+        }
+      })
+      .catch(err => console.error('Failed to load banks:', err));
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchWithdrawals = async () => {
+      try {
+        const q = query(collection(db, 'withdrawals'), where('userId', '==', user.id));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Withdrawal));
+        setWithdrawals(data.sort((a, b) => b.createdAt - a.createdAt));
+      } catch (error) {
+        console.error("Error fetching withdrawals", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchWithdrawals();
+  }, [user]);
+
+  // Handle automatic real bank account verification when 10 digits are entered
+  useEffect(() => {
+    if (accountNumber.length === 10 && selectedBankCode) {
+      setVerifyingAccount(true);
+      setVerificationError('');
+      setResolvedAccountName('');
+      setAccountVerified(false);
+
+      const verifyAccount = async () => {
+        try {
+          const res = await fetch('/api/resolve-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountNumber, bankCode: selectedBankCode })
+          });
+          const data = await res.json();
+          if (data.success && data.accountName) {
+            setResolvedAccountName(data.accountName);
+            setAccountVerified(true);
+          } else {
+            setVerificationError(data.error || 'Could not verify account. Please check details.');
+          }
+        } catch (error) {
+          console.error('Account resolution failed:', error);
+          setVerificationError('Network error verifying bank account.');
+        } finally {
+          setVerifyingAccount(false);
+        }
+      };
+
+      verifyAccount();
+    } else {
+      setResolvedAccountName('');
+      setAccountVerified(false);
+      if (accountNumber.length > 0 && accountNumber.length < 10) {
+        setVerificationError('Account number must be 10 digits');
+      } else {
+        setVerificationError('');
+      }
+    }
+  }, [accountNumber, selectedBankCode]);
+
+  const handleWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    const amount = Number(withdrawAmount);
+    if (!amount || amount <= 0) return alert('Enter a valid amount');
+    if (amount > (user.walletBalance || 0)) return alert('Insufficient funds');
+    if (!bankName || !accountNumber) return alert('Enter bank details');
+    if (!accountVerified) return alert('Please wait for account name verification');
+
+    setSubmitting(true);
+    try {
+      // Create withdrawal request
+      const newWithdrawal = {
+        userId: user.id,
+        amount,
+        bankName,
+        accountNumber,
+        accountName: resolvedAccountName,
+        status: 'pending',
+        createdAt: Date.now()
+      };
+      
+      const docRef = await addDoc(collection(db, 'withdrawals'), newWithdrawal);
+      
+      // Deduct from wallet
+      await updateDoc(doc(db, 'users', user.id), {
+        walletBalance: increment(-amount)
+      });
+      
+      // Update local state
+      setWithdrawals([{ id: docRef.id, ...newWithdrawal } as Withdrawal, ...withdrawals]);
+      
+      // We mutate local user store state for immediate feedback
+      useAuthStore.setState({
+        user: { ...user, walletBalance: (user.walletBalance || 0) - amount }
+      });
+      
+      setWithdrawAmount('');
+      setBankName('');
+      setAccountNumber('');
+      setResolvedAccountName('');
+      setAccountVerified(false);
+      alert('Withdrawal request submitted successfully! Funds will be transferred to your verified bank account shortly.');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to submit withdrawal');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="container mx-auto max-w-4xl px-4 py-12">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-900">Wallet & Earnings</h1>
+        <p className="text-slate-500 mt-2">Manage your earnings and withdraw to your local bank account.</p>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-8">
+        
+        {/* Balance Card */}
+        <div className="md:col-span-1">
+          <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-4 opacity-10">
+               <Banknote className="w-24 h-24" />
+             </div>
+             <p className="text-slate-400 font-medium mb-2">Available Balance</p>
+             <h2 className="text-4xl font-bold tracking-tight mb-6">
+               ₦{(user.walletBalance || 0).toLocaleString()}
+             </h2>
+             <div className="text-sm text-emerald-400 flex items-center gap-1.5">
+               <CheckCircle className="w-4 h-4" /> Available for withdrawal
+             </div>
+          </div>
+        </div>
+
+        {/* Withdrawal Form */}
+        <div className="md:col-span-2">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+            <h3 className="text-xl font-bold text-slate-900 mb-6">Withdraw Funds</h3>
+            
+            <form onSubmit={handleWithdraw} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Amount to Withdraw (₦)</label>
+                <div className="relative">
+                  <Banknote className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                  <Input 
+                    type="number" 
+                    required 
+                    min="100"
+                    max={user.walletBalance || 0}
+                    placeholder="e.g. 10000"
+                    className="pl-10"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Bank Name</label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <select 
+                      required 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-10"
+                      value={selectedBankCode}
+                      onChange={(e) => {
+                        const code = e.target.value;
+                        setSelectedBankCode(code);
+                        const found = banks.find(b => b.code === code);
+                        if (found) setBankName(found.name);
+                      }}
+                    >
+                      <option value="" disabled>Select a bank...</option>
+                      {banks.map(bank => (
+                        <option key={bank.code} value={bank.code}>{bank.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Account Number</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <Input 
+                      type="text"
+                      required 
+                      placeholder="10 digit number"
+                      className="pl-10"
+                      maxLength={10}
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+                    />
+                  </div>
+                  {/* Account Name Resolution Feedback */}
+                  {verifyingAccount && (
+                    <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                      <span>Verifying account with bank...</span>
+                    </div>
+                  )}
+                  {accountVerified && resolvedAccountName && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Account Name: {resolvedAccountName}</span>
+                    </div>
+                  )}
+                  {verificationError && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded-md border border-red-200">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{verificationError}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 h-12 text-lg"
+                disabled={submitting || !user.walletBalance || user.walletBalance <= 0 || !accountVerified}
+              >
+                {submitting ? 'Processing...' : 'Request Withdrawal'}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="mt-12">
+        <h3 className="text-xl font-bold text-slate-900 mb-6">Withdrawal History</h3>
+        
+        {loading ? (
+          <div className="text-slate-500">Loading history...</div>
+        ) : withdrawals.length === 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-500">
+            No withdrawals yet.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 text-slate-900 border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4 font-semibold">Date</th>
+                  <th className="px-6 py-4 font-semibold">Amount</th>
+                  <th className="px-6 py-4 font-semibold">Destination</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {withdrawals.map((w) => (
+                  <tr key={w.id} className="hover:bg-slate-50/50">
+                    <td className="px-6 py-4">{new Date(w.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-medium text-slate-900">₦{w.amount.toLocaleString()}</td>
+                    <td className="px-6 py-4">
+                      {w.bankName} <span className="text-slate-400">({w.accountNumber})</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium capitalize ${
+                        w.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        w.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        'bg-red-50 text-red-700 border border-red-200'
+                      }`}>
+                        {w.status === 'pending' && <Clock className="w-3.5 h-3.5" />}
+                        {w.status === 'completed' && <CheckCircle className="w-3.5 h-3.5" />}
+                        {w.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
