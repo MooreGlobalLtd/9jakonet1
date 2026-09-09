@@ -57,7 +57,7 @@ export default function AdminDashboard() {
       const reason = prompt("Please enter the reason for declining this KYC:", "Unclear document photo or mismatched selfie");
       if (reason === null) return;
       if (!reason.trim()) {
-        alert("You must provide a reason for declining.");
+        toast.info("You must provide a reason for declining.");
         return;
       }
       rejectReason = reason.trim();
@@ -118,9 +118,9 @@ export default function AdminDashboard() {
     } catch (err: any) {
       console.error("KYC Update Error:", err);
       if (err.message === "FIREBASE_TIMEOUT") {
-        alert("⚠️ Connection Timeout: Your browser's adblocker or the AI Studio Sandbox limits are blocking Firebase saves!\n\nTo fix this for good, follow the YouTube tutorial you linked to set up your own Firebase Project and paste the keys in the app settings.");
+        toast.info("⚠️ Connection Timeout: Your browser's adblocker or the AI Studio Sandbox limits are blocking Firebase saves!\n\nTo fix this for good, follow the YouTube tutorial you linked to set up your own Firebase Project and paste the keys in the app settings.");
       } else {
-        alert('Background Sync Error: ' + (err.message || err));
+        toast.info('Background Sync Error: ' + (err.message || err));
       }
       // Revert UI if DB write failed
       fetchData();
@@ -130,20 +130,20 @@ export default function AdminDashboard() {
   const handleResetSingleUserBalance = async (targetUser: User) => {
     if (!confirm(`Reset ${targetUser.displayName || targetUser.email}'s test wallet balance from ₦${(targetUser.walletBalance || 0).toLocaleString()} to ₦0?`)) return;
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Balance resets are disabled.");
+      toast.info("System quota limit reached for today. Balance resets are disabled.");
       return;
     }
     try {
       await updateDoc(doc(db, 'users', targetUser.id), { walletBalance: 0 });
       setUsers(prev => prev.map(u => u.id === targetUser.id ? { ...u, walletBalance: 0 } : u));
-      alert(`✅ Reset ${targetUser.displayName || targetUser.email}'s wallet balance to ₦0.`);
+      toast.info(`✅ Reset ${targetUser.displayName || targetUser.email}'s wallet balance to ₦0.`);
     } catch (err: any) {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Balance resets are disabled.");
+        toast.info("System quota limit reached for today. Balance resets are disabled.");
       } else {
         console.error(err);
-        alert('Failed to reset user balance.');
+        toast.info('Failed to reset user balance.');
       }
     }
   };
@@ -151,12 +151,12 @@ export default function AdminDashboard() {
   const handleResetAllUserBalances = async () => {
     const toReset = users.filter(u => (u.walletBalance || 0) > 0);
     if (toReset.length === 0) {
-      alert('All users currently have ₦0 wallet balance.');
+      toast.info('All users currently have ₦0 wallet balance.');
       return;
     }
     if (!confirm(`This will clear test balances for ${toReset.length} users (including the ₦79,880 test balance) back to ₦0 for live production readiness. Proceed?`)) return;
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Balance resets are disabled.");
+      toast.info("System quota limit reached for today. Balance resets are disabled.");
       return;
     }
     setResettingBalances(true);
@@ -165,14 +165,14 @@ export default function AdminDashboard() {
         await updateDoc(doc(db, 'users', u.id), { walletBalance: 0 });
       }
       setUsers(prev => prev.map(u => ({ ...u, walletBalance: 0 })));
-      alert(`✅ Successfully cleared ${toReset.length} test balances back to ₦0!`);
+      toast.info(`✅ Successfully cleared ${toReset.length} test balances back to ₦0!`);
     } catch (err: any) {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Partially applied resets before hitting quota limits.");
+        toast.info("System quota limit reached for today. Partially applied resets before hitting quota limits.");
       } else {
         console.error(err);
-        alert('Failed to reset balances.');
+        toast.info('Failed to reset balances.');
       }
     } finally {
       setResettingBalances(false);
@@ -253,7 +253,7 @@ export default function AdminDashboard() {
 
   const verifyArtisan = async (artisanId: string) => {
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Actions are disabled.");
+      toast.info("System quota limit reached for today. Actions are disabled.");
       return;
     }
     try {
@@ -264,10 +264,10 @@ export default function AdminDashboard() {
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Actions are disabled.");
+        toast.info("System quota limit reached for today. Actions are disabled.");
       } else {
         console.error("Failed to verify artisan:", error);
-        alert("Verification failed");
+        toast.info("Verification failed");
       }
     }
   };
@@ -284,7 +284,7 @@ export default function AdminDashboard() {
 
     setProcessingWithdrawalId(w.id);
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Payouts cannot be finalized right now.");
+      toast.info("System quota limit reached for today. Payouts cannot be finalized right now.");
       setProcessingWithdrawalId(null);
       return;
     }
@@ -331,7 +331,7 @@ export default function AdminDashboard() {
           if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
             markQuotaExhausted();
             console.warn("Paystack succeeded, but Firestore quota blocked updating the local DB state.");
-            alert("Paystack payout succeeded, but database sync is paused due to quota. Please mark manually later.");
+            toast.info("Paystack payout succeeded, but database sync is paused due to quota. Please mark manually later.");
           }
         }
 
@@ -350,18 +350,18 @@ export default function AdminDashboard() {
           });
         }
 
-        alert(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
+        toast.info(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
         fetchData();
       } else {
         if (data.error && data.error.toLowerCase().includes('starter business')) {
-          alert(`⚠️ Paystack Starter Business Limitation:\n\n${data.error}\n\nUnder Nigerian banking regulations (CBN), Paystack only allows automated API transfers for "Registered Businesses" (accounts verified with CAC registration).\n\n💡 Immediate Solution:\n1. Open your OPay / banking app and send ₦${w.amount.toLocaleString()} directly to:\n   ${recipientName}\n   ${w.bankName} - ${w.accountNumber}\n\n2. Click "Mark Paid Manually" below to instantly finalize this withdrawal and email the artisan!\n\n(To enable automated API payouts in the future, upgrade your Paystack account to a Registered Business under Settings > Compliance on Paystack).`);
+          toast.info(`⚠️ Paystack Starter Business Limitation:\n\n${data.error}\n\nUnder Nigerian banking regulations (CBN), Paystack only allows automated API transfers for "Registered Businesses" (accounts verified with CAC registration).\n\n💡 Immediate Solution:\n1. Open your OPay / banking app and send ₦${w.amount.toLocaleString()} directly to:\n   ${recipientName}\n   ${w.bankName} - ${w.accountNumber}\n\n2. Click "Mark Paid Manually" below to instantly finalize this withdrawal and email the artisan!\n\n(To enable automated API payouts in the future, upgrade your Paystack account to a Registered Business under Settings > Compliance on Paystack).`);
         } else {
-          alert(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Your Paystack account has Transfers enabled.`);
+          toast.info(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Your Paystack account has Transfers enabled.`);
         }
       }
     } catch (error: any) {
       console.error('Withdrawal transfer error:', error);
-      alert('Error contacting payout endpoint: ' + (error?.message || 'Check server connection or Paystack keys.'));
+      toast.info('Error contacting payout endpoint: ' + (error?.message || 'Check server connection or Paystack keys.'));
     } finally {
       setProcessingWithdrawalId(null);
     }
@@ -370,7 +370,7 @@ export default function AdminDashboard() {
   const rejectWithdrawal = async (w: Withdrawal) => {
     if (!confirm(`Reject this withdrawal and refund ₦${w.amount.toLocaleString()} back to the artisan's wallet?`)) return;
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Withdrawals cannot be rejected right now.");
+      toast.info("System quota limit reached for today. Withdrawals cannot be rejected right now.");
       return;
     }
 
@@ -384,22 +384,22 @@ export default function AdminDashboard() {
         walletBalance: increment(w.amount)
       });
 
-      alert(`Withdrawal rejected. ₦${w.amount.toLocaleString()} refunded to artisan's wallet.`);
+      toast.info(`Withdrawal rejected. ₦${w.amount.toLocaleString()} refunded to artisan's wallet.`);
       fetchData();
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Withdrawals cannot be rejected right now.");
+        toast.info("System quota limit reached for today. Withdrawals cannot be rejected right now.");
       } else {
         console.error('Failed to reject withdrawal:', error);
-        alert('Failed to reject and refund withdrawal.');
+        toast.info('Failed to reject and refund withdrawal.');
       }
     }
   };
 
   const markWithdrawalComplete = async (withdrawalId: string) => {
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Payouts cannot be marked complete right now.");
+      toast.info("System quota limit reached for today. Payouts cannot be marked complete right now.");
       return;
     }
     try {
@@ -445,15 +445,15 @@ export default function AdminDashboard() {
         }
       }
 
-      alert(`✅ Withdrawal marked as completed! ₦${withdrawalDoc.amount.toLocaleString()} marked as paid and artisan notified.`);
+      toast.info(`✅ Withdrawal marked as completed! ₦${withdrawalDoc.amount.toLocaleString()} marked as paid and artisan notified.`);
       fetchData();
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Partially applied manual mark completion before hitting quota limits.");
+        toast.info("System quota limit reached for today. Partially applied manual mark completion before hitting quota limits.");
       } else {
         console.error("Failed to update withdrawal", error);
-        alert("Failed to update: " + error);
+        toast.info("Failed to update: " + error);
       }
     }
   };
@@ -462,7 +462,7 @@ export default function AdminDashboard() {
     if (!silent) setCheckingBalance(true);
     try {
       if (!secret) {
-        if (!silent) alert('Please enter and save your Paystack Secret Key first.');
+        if (!silent) toast.info('Please enter and save your Paystack Secret Key first.');
         return;
       }
 
@@ -485,17 +485,17 @@ export default function AdminDashboard() {
         setPaystackBalance(`₦${transferBal.toLocaleString()}`);
 
         if (!silent) {
-          alert(`✅ Connected to Paystack!\n\n📊 Live Account Financials:\n• Total Customer Revenue: ₦${totalRev.toLocaleString()} (Matches your Paystack Dashboard Revenue / Next Payout)\n• Available Transfer Balance: ₦${transferBal.toLocaleString()} (For automated API payouts)\n\n💡 Note: As a Starter Business, Paystack sweeps customer payments (₦${totalRev.toLocaleString()}) to your linked bank account. You can disburse artisan funds directly from your bank app and click "Mark Paid Manually"!`);
+          toast.info(`✅ Connected to Paystack!\n\n📊 Live Account Financials:\n• Total Customer Revenue: ₦${totalRev.toLocaleString()} (Matches your Paystack Dashboard Revenue / Next Payout)\n• Available Transfer Balance: ₦${transferBal.toLocaleString()} (For automated API payouts)\n\n💡 Note: As a Starter Business, Paystack sweeps customer payments (₦${totalRev.toLocaleString()}) to your linked bank account. You can disburse artisan funds directly from your bank app and click "Mark Paid Manually"!`);
         }
       } else {
         if (!silent) {
-          alert(`Paystack Response: ${data.error || 'Failed to retrieve balance. Please verify your secret key.'}`);
+          toast.info(`Paystack Response: ${data.error || 'Failed to retrieve balance. Please verify your secret key.'}`);
         }
       }
     } catch (error: any) {
       console.error('Balance check error:', error);
       if (!silent) {
-        alert('Could not connect to Paystack balance endpoint: ' + (error?.message || 'Check connection.'));
+        toast.info('Could not connect to Paystack balance endpoint: ' + (error?.message || 'Check connection.'));
       }
     } finally {
       if (!silent) setCheckingBalance(false);
@@ -512,7 +512,7 @@ export default function AdminDashboard() {
     const cleanSecret = paystackSecretInput.trim();
 
     if (!cleanPublic && !cleanSecret) {
-      alert('Please enter your Paystack keys');
+      toast.info('Please enter your Paystack keys');
       return;
     }
 
@@ -542,7 +542,7 @@ export default function AdminDashboard() {
         console.warn('API sync notice:', e);
       }
 
-      alert('✅ Paystack configuration saved successfully! Keys are safely stored and active for automated bank payouts.');
+      toast.info('✅ Paystack configuration saved successfully! Keys are safely stored and active for automated bank payouts.');
       checkLiveBalance();
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
@@ -562,11 +562,11 @@ export default function AdminDashboard() {
           });
         } catch (e) { }
 
-        alert('⚠️ System quota limit reached. Paystack configuration saved locally in the browser session, but cloud sync is disabled.');
+        toast.info('⚠️ System quota limit reached. Paystack configuration saved locally in the browser session, but cloud sync is disabled.');
         checkLiveBalance();
       } else {
         console.error('Save configuration error:', error);
-        alert('Error saving configuration: ' + (error?.message || error));
+        toast.info('Error saving configuration: ' + (error?.message || error));
       }
     }
   };
@@ -1645,7 +1645,7 @@ export default function AdminDashboard() {
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(w.accountNumber);
-                                alert(`Copied account number ${w.accountNumber} to clipboard!`);
+                                toast.info(`Copied account number ${w.accountNumber} to clipboard!`);
                               }}
                               className="text-[11px] font-medium text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
                               title="Copy account number"

@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { Toaster } from 'sonner';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import AppLayout from './components/layout/AppLayout';
@@ -50,6 +51,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <Toaster position="top-center" richColors />
       <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Home />} />

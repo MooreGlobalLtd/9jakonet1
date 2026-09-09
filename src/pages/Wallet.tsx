@@ -257,7 +257,7 @@ export default function Wallet() {
     setSubmitting(true);
 
     if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. Withdrawals cannot be processed at this time.");
+      toast.error("System quota limit reached for today.");
       setSubmitting(false);
       return;
     }
@@ -295,14 +295,14 @@ export default function Wallet() {
       setAccountNumber('');
       setResolvedAccountName('');
       setAccountVerified(false);
-      alert('Withdrawal request submitted successfully! Funds will be transferred to your verified bank account shortly.');
+      toast.success("Withdrawal request submitted! Funds will be transferred shortly.");
     } catch (error: any) {
       console.error(error);
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
-        alert("System quota limit reached for today. Withdrawals cannot be processed at this time.");
+        toast.error("System quota limit reached for today.");
       } else {
-        alert('Failed to submit withdrawal');
+        toast.error("Failed to submit withdrawal");
       }
     } finally {
       setSubmitting(false);

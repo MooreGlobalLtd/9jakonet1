@@ -12,6 +12,7 @@ import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 import { PaystackButton } from 'react-paystack';
+import { toast } from 'sonner';
 
 export default function JobsAndEscrow() {
   const { user, init } = useAuthStore();
@@ -171,6 +172,19 @@ export default function JobsAndEscrow() {
   };
 
   // Step 1: When customer clicks "Release Funds", generate 6-digit OTP and send to their email
+  
+  const handleRaiseDispute = async (job: EscrowContract) => {
+    if (window.confirm("Are you sure you want to raise a dispute? Escrow funds will be locked until 9jaKonet Admin resolves the issue.")) {
+      try {
+        await updateDoc(doc(db, 'jobs', job.id), { status: 'disputed' });
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'disputed' } : j));
+        toast.error("Job has been disputed. Admin will contact you shortly.");
+      } catch (error) {
+        toast.error("Failed to raise dispute");
+      }
+    }
+  };
+
   const initiateReleaseOtp = async (job: EscrowContract) => {
     setOtpModalJob(job);
     setEnteredOtp('');
@@ -319,7 +333,7 @@ export default function JobsAndEscrow() {
       });
 
       setOtpModalJob(null);
-      alert(`🎉 Escrow Release Authorized! 9jaKonet Admin has been notified to disburse ₦${artisanPayout.toLocaleString()} to ${job.artisanName}'s bank account. Please take a moment to rate your experience below.`);
+      toast.success(`🎉 Escrow Release Authorized! Admin notified to disburse ₦${artisanPayout.toLocaleString()}.`);
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
@@ -336,7 +350,7 @@ export default function JobsAndEscrow() {
   const submitReview = async (job: EscrowContract) => {
     const review = reviewForm[job.id];
     if (!review || !review.score) {
-       alert("Please select a star rating");
+       toast.error("Please select a star rating");
        return;
     }
 
@@ -506,6 +520,14 @@ export default function JobsAndEscrow() {
                         >
                           Release Funds to Artisan
                         </Button>
+                        <Button 
+                          onClick={() => handleRaiseDispute(job)} 
+                          variant="outline"
+                          className="w-full md:w-auto border-red-200 text-red-600 hover:bg-red-50 font-semibold shadow-sm mt-1"
+                        >
+                          Raise Dispute
+                        </Button>
+
                         <span className="text-[11px] text-slate-500 text-right">
                           Requires 6-digit email code for security
                         </span>
@@ -518,6 +540,13 @@ export default function JobsAndEscrow() {
                       </div>
                     )}
 
+                    {job.status === 'disputed' && (
+                      <div className="text-sm text-red-700 font-bold bg-red-100 px-3 py-1.5 rounded-md border border-red-200 flex items-center gap-1.5 self-end">
+                        <AlertCircle className="h-4 w-4" />
+                        Status: Disputed (Funds Locked)
+                      </div>
+                    )}
+                    
                     {user.role === 'artisan' && job.status === 'in_progress' && (
                       <div className="flex flex-col gap-1 items-end">
                         <div className="text-xs text-blue-700 font-semibold bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200 flex items-center gap-1.5">
