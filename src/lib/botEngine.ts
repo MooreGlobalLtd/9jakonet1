@@ -179,12 +179,46 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
 
 Need direct assistance from our management team?
 
-- **Official Support Email**: \`hello@9jakonet.mooregloballtd.online\`
+- **Official Support Email**: \`info@mooregloballtd.online\`
 - **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)
 - **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.`;
   }
 
-  // 16. Greetings
+  // 16. How to Make Money / How Artisans Earn on 9jaKonet
+  if (/make money|earn|earn money|how do i get paid|income|charge|service fee|artisan work|getting jobs/.test(q)) {
+    return `### How to Make Money as an Artisan on 9jaKonet 💰
+
+1. **Sign Up for Free**: Choose **"I am an Artisan"** on the registration page.
+2. **Complete Your Trade Profile**: Add your trade (Plumbing, Electrical, AC Repair, Carpentry, etc.), years of experience, hourly/flat rates, and upload photos of your past work.
+3. **Get Verified**: Complete your identity verification (NIN, Driver's License, or Voter's Card) and capture your live selfie.
+4. **Get Hired by Clients**: Customers in your area will contact you via chat or send job offers.
+5. **Secure Escrow**: The client funds the contract into Paystack Escrow before you start work, ensuring guaranteed payment.
+6. **Deliver & Get Paid**: When the job is completed, the client releases payment with an email OTP code. You receive **90% of the funds** directly into your 9jaKonet Wallet, which you can withdraw to your Nigerian bank account at any time!`;
+  }
+
+  // 17. Account Creation & Sign Up Help
+  if (/sign up|register|create account|login|log in|password|email address|create a new account/.test(q)) {
+    return `### Creating an Account on 9jaKonet 📝
+
+You can register on 9jaKonet easily in just two steps:
+
+- **Sign Up with Email & Password**: Click **Sign Up** in the top navigation bar. Enter your full name, email address, choose a strong password, and select whether you need a service (**Customer**) or offer services (**Artisan**).
+- **Google Sign-In**: Alternatively, you can click "Sign up with Google" for instant one-click onboarding.
+- **Next Steps**:
+  - **Customers**: Verify your phone number and address to book verified artisans safely.
+  - **Artisans**: Fill out your trade profile (trade skills, bio, service areas) and complete identity verification to unlock your green verified badge!`;
+  }
+
+  // 18. Profile Photo & Updating Information
+  if (/profile photo|picture|change photo|upload picture|avatar|update profile|save changes/.test(q)) {
+    return `### Managing Your Profile & Pictures 📸
+
+- **Upload Profile Picture**: Go to **My Profile** in the top navigation menu. Click the camera icon directly on your profile avatar to upload and set your real picture!
+- **Update Details**: You can update your Full Name, Phone Number, State, and Residential Address anytime.
+- **Save Changes**: After updating your information, click the **"Save Changes"** button at the bottom of the form. The system will save your updates and confirm with a green "Saved!" indicator.`;
+  }
+
+  // 19. Greetings & Pleasantries
   if (/^(hello|hi|hey|good morning|good afternoon|good evening|howdy|what's up|greet|yo)/.test(q)) {
     return `Hello! 👋 Welcome to **9jaKonet**, Nigeria's premier artisan marketplace!
 
@@ -199,16 +233,13 @@ I am KonetBot, your dedicated support assistant. I can help you with:
 What would you like to explore today?`;
   }
 
-  // 17. Default Contextual Assistant Reply (Never a generic repetitive error!)
-  return `Thank you for asking! As your **9jaKonet** support concierge, I'm here to ensure you have a seamless experience on our platform.
+  // 20. Dynamic Contextual Fallback based on User's Question
+  const words = q.split(/\s+/).filter(w => w.length > 3);
+  const keywordsStr = words.slice(0, 3).join(', ');
 
-You can ask me about:
+  return `Thanks for asking! Regarding **${keywordsStr || 'your inquiry'}** on 9jaKonet:
 
-- **Hiring Artisans**: How to browse and hire verified plumbers, electricians, AC techs, and carpenters in Lagos, Abuja, and nationwide.
-- **Escrow Security**: How your money is safely locked in Paystack Escrow until you approve the work.
-- **6-Digit OTP Release**: How dual-verification protects both customers and artisans from fraudulent payouts.
-- **Live GPS Traceability**: How our real-time location safeguards home and office visits.
-- **Artisan Payouts**: How verified artisans receive 90% net earnings directly into Nigerian bank accounts.
-
-Feel free to ask a specific question about any of these topics!`;
+- **For Customers**: 9jaKonet connects you with vetted, background-checked Nigerian technicians. All payments are protected in Paystack Escrow and released only after your approval with a 6-digit email OTP.
+- **For Artisans**: You can register your trade, set your rates, accept contracts, and receive 90% net earnings paid directly into any Nigerian bank account.
+- **Need personalized help?** You can reach our dedicated support desk at **info@mooregloballtd.online** or ask me specifically about hiring, escrow, KYC verification, or wallet withdrawals!`;
 }

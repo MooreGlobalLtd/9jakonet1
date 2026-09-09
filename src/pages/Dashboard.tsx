@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
 import { Input } from '../components/ui/input';
 import { formatDateTime } from '../lib/utils';
 import { Clock } from 'lucide-react';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 export default function Dashboard() {
   const { user, artisanProfile } = useAuthStore();
@@ -58,14 +59,24 @@ export default function Dashboard() {
         status: 'open',
         createdAt: Date.now()
       };
+      if (isQuotaExhausted()) {
+        alert("System quota limit reached for today. Job cannot be posted at this time.");
+        return;
+      }
+
       const docRef = await addDoc(collection(db, 'jobs'), newJob);
       setJobs([{ id: docRef.id, ...newJob } as Job, ...jobs]);
       setShowJobForm(false);
       setJobTitle('');
       setJobDesc('');
-    } catch (error) {
-      console.error("Error posting job:", error);
-      alert("Failed to post job");
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Job cannot be posted at this time.");
+      } else {
+        console.error("Error posting job:", error);
+        alert("Failed to post job");
+      }
     }
   };
 

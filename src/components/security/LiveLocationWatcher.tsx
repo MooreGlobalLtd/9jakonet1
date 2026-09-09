@@ -5,6 +5,7 @@ import { db } from '../../lib/firebase';
 import { MapPin, AlertTriangle, ShieldCheck, RefreshCw, Smartphone, Check, ChevronRight, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { getStateCoordinates } from '../../lib/nigerianLocations';
+import { isQuotaExhausted, markQuotaExhausted } from '../../lib/quotaManager';
 
 export default function LiveLocationWatcher() {
   const { user, setUser } = useAuthStore();
@@ -47,8 +48,12 @@ export default function LiveLocationWatcher() {
     if (!currentUser) return;
 
     const now = Date.now();
-    // Protect against quota exhaustion: maximum 1 write every 30 minutes unless forced by explicit button click
-    if (!force && now - lastSyncTimestampRef.current < 1800000) {
+    // Check persistent sync timestamp in localStorage to prevent writes across page refreshes
+    const savedSync = localStorage.getItem(`loc_sync_${currentUser.id}`);
+    const lastSavedTs = savedSync ? parseInt(savedSync, 10) : 0;
+
+    // Protect against quota exhaustion: maximum 1 write every 60 minutes unless forced
+    if (!force && (now - lastSavedTs < 3600000 || now - lastSyncTimestampRef.current < 3600000)) {
       return;
     }
     lastSyncTimestampRef.current = now;
@@ -68,14 +73,23 @@ export default function LiveLocationWatcher() {
     });
     setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
+    // If Firestore write quota is already exhausted today, don't attempt cloud write
+    if (isQuotaExhausted()) {
+      localStorage.setItem(`loc_sync_${currentUser.id}`, String(now));
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'users', currentUser.id), {
         liveLocation: locationData
       });
+      localStorage.setItem(`loc_sync_${currentUser.id}`, String(now));
     } catch (err: any) {
       // Gracefully handle Firestore quota exceeded without breaking UI
-      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
-        console.warn('Firestore daily write quota reached. Live location maintained in active session memory.');
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded') || err?.message?.includes('quota')) {
+        console.warn('Firestore daily write quota reached. Live location preserved in local session.');
+        markQuotaExhausted();
+        localStorage.setItem(`loc_sync_${currentUser.id}`, String(now));
       } else {
         console.warn('Notice syncing live location:', err?.message || err);
       }

@@ -6,6 +6,7 @@ import { Banknote, Building2, User, Clock, CheckCircle, Loader2, AlertCircle, Re
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { formatDateTime } from '../lib/utils';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 const NIGERIAN_BANKS = [
   "Access Bank",
@@ -126,6 +127,16 @@ export default function Wallet() {
       return;
     }
     setSavingBank(true);
+
+    if (isQuotaExhausted()) {
+      useAuthStore.setState({
+        user: { ...user, bankName, bankCode: selectedBankCode, accountNumber, accountName: resolvedAccountName }
+      });
+      alert('Bank account details saved in active session (Cloud sync disabled due to quota).');
+      setSavingBank(false);
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'users', user.id), {
         bankName,
@@ -137,9 +148,17 @@ export default function Wallet() {
         user: { ...user, bankName, bankCode: selectedBankCode, accountNumber, accountName: resolvedAccountName }
       });
       alert('Bank account details saved successfully for automatic direct payouts!');
-    } catch (error) {
-      console.error('Failed to save bank details:', error);
-      alert('Failed to save bank details.');
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        useAuthStore.setState({
+          user: { ...user, bankName, bankCode: selectedBankCode, accountNumber, accountName: resolvedAccountName }
+        });
+        alert('Bank account details saved in active session (Cloud sync disabled due to quota).');
+      } else {
+        console.error('Failed to save bank details:', error);
+        alert('Failed to save bank details.');
+      }
     } finally {
       setSavingBank(false);
     }
@@ -236,6 +255,13 @@ export default function Wallet() {
     if (!accountVerified) return alert('Please wait for account name verification');
 
     setSubmitting(true);
+
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Withdrawals cannot be processed at this time.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       // Create withdrawal request with bankCode
       const newWithdrawal = {
@@ -270,9 +296,14 @@ export default function Wallet() {
       setResolvedAccountName('');
       setAccountVerified(false);
       alert('Withdrawal request submitted successfully! Funds will be transferred to your verified bank account shortly.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert('Failed to submit withdrawal');
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Withdrawals cannot be processed at this time.");
+      } else {
+        alert('Failed to submit withdrawal');
+      }
     } finally {
       setSubmitting(false);
     }

@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 interface Withdrawal {
   id: string;
@@ -49,12 +50,50 @@ export default function AdminDashboard() {
   const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
 
   const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. KYC updates are disabled.");
+      return;
+    }
     try {
       await updateDoc(doc(db, 'users', userId), {
         isKycVerified: newStatus === 'verified',
         'kyc.status': newStatus,
         'kyc.verifiedAt': Date.now()
       });
+
+      // Also update kyc_verifications record
+      try {
+        await updateDoc(doc(db, 'kyc_verifications', userId), {
+          status: newStatus,
+          verifiedAt: Date.now()
+        });
+      } catch (e) {
+        // May not exist in old records
+      }
+
+      // If this user is an artisan, synchronize their artisan verification status
+      try {
+        const artisanDoc = await getDoc(doc(db, 'artisans', userId));
+        if (artisanDoc.exists()) {
+          await updateDoc(doc(db, 'artisans', userId), {
+            verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
+          });
+        }
+      } catch (e) {
+        console.warn('Artisan sync notice:', e);
+      }
+
+      const targetUser = users.find(u => u.id === userId);
+      if (targetUser?.email) {
+        sendEmail({
+          to: targetUser.email,
+          subject: newStatus === 'verified' ? 'Congratulations! Your 9jaKonet Identity is Verified' : '9jaKonet KYC Verification Update',
+          html: newStatus === 'verified' 
+            ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
+            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission could not be verified. Please log in to 9jaKonet and re-submit a clear document photo and live biometric camera selfie.</p>`
+        }).catch(err => console.warn('Email notice error:', err));
+      }
+
       setUsers(prev => prev.map(u => u.id === userId ? {
         ...u,
         isKycVerified: newStatus === 'verified',
@@ -69,22 +108,37 @@ export default function AdminDashboard() {
           verifiedAt: Date.now()
         }
       } : u));
-      alert(`✅ Updated KYC verification status to "${newStatus}" for this user.`);
+
+      alert(`✅ Updated KYC verification status to "${newStatus}" for ${targetUser?.displayName || 'user'}. An email notification has been dispatched.`);
     } catch (err: any) {
-      console.error(err);
-      alert('Error updating KYC status: ' + err.message);
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. KYC updates are disabled.");
+      } else {
+        console.error(err);
+        alert('Error updating KYC status: ' + err.message);
+      }
     }
   };
 
   const handleResetSingleUserBalance = async (targetUser: User) => {
     if (!confirm(`Reset ${targetUser.displayName || targetUser.email}'s test wallet balance from ₦${(targetUser.walletBalance || 0).toLocaleString()} to ₦0?`)) return;
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Balance resets are disabled.");
+      return;
+    }
     try {
       await updateDoc(doc(db, 'users', targetUser.id), { walletBalance: 0 });
       setUsers(prev => prev.map(u => u.id === targetUser.id ? { ...u, walletBalance: 0 } : u));
       alert(`✅ Reset ${targetUser.displayName || targetUser.email}'s wallet balance to ₦0.`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to reset user balance.');
+    } catch (err: any) {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Balance resets are disabled.");
+      } else {
+        console.error(err);
+        alert('Failed to reset user balance.');
+      }
     }
   };
 
@@ -95,6 +149,10 @@ export default function AdminDashboard() {
       return;
     }
     if (!confirm(`This will clear test balances for ${toReset.length} users (including the ₦79,880 test balance) back to ₦0 for live production readiness. Proceed?`)) return;
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Balance resets are disabled.");
+      return;
+    }
     setResettingBalances(true);
     try {
       for (const u of toReset) {
@@ -102,9 +160,14 @@ export default function AdminDashboard() {
       }
       setUsers(prev => prev.map(u => ({ ...u, walletBalance: 0 })));
       alert(`✅ Successfully cleared ${toReset.length} test balances back to ₦0!`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to reset balances.');
+    } catch (err: any) {
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Partially applied resets before hitting quota limits.");
+      } else {
+        console.error(err);
+        alert('Failed to reset balances.');
+      }
     } finally {
       setResettingBalances(false);
     }
@@ -183,14 +246,23 @@ export default function AdminDashboard() {
   };
 
   const verifyArtisan = async (artisanId: string) => {
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Actions are disabled.");
+      return;
+    }
     try {
       await updateDoc(doc(db, 'artisans', artisanId), {
         verificationStatus: 'verified'
       });
       fetchData(); // Refresh list
-    } catch (error) {
-      console.error("Failed to verify artisan:", error);
-      alert("Verification failed");
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Actions are disabled.");
+      } else {
+        console.error("Failed to verify artisan:", error);
+        alert("Verification failed");
+      }
     }
   };
 
@@ -205,6 +277,11 @@ export default function AdminDashboard() {
     }
 
     setProcessingWithdrawalId(w.id);
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Payouts cannot be finalized right now.");
+      setProcessingWithdrawalId(null);
+      return;
+    }
     try {
       const res = await fetch('/api/payout', {
         method: 'POST',
@@ -224,25 +301,33 @@ export default function AdminDashboard() {
 
       const data = await res.json();
       if (data.success) {
-        await updateDoc(doc(db, 'withdrawals', w.id), {
-          status: 'completed',
-          transferCode: data.transferCode,
-          reference: data.reference,
-          transferStatus: data.status || 'success',
-          paidAt: Date.now()
-        });
+        try {
+          await updateDoc(doc(db, 'withdrawals', w.id), {
+            status: 'completed',
+            transferCode: data.transferCode,
+            reference: data.reference,
+            transferStatus: data.status || 'success',
+            paidAt: Date.now()
+          });
 
-        // Add to transactions log
-        await addDoc(collection(db, 'transactions'), {
-          userId: w.userId,
-          type: 'withdrawal_payout',
-          title: `Withdrawal to ${w.bankName} (${w.accountNumber})`,
-          amount: w.amount,
-          transferCode: data.transferCode,
-          reference: data.reference,
-          status: 'completed',
-          createdAt: Date.now()
-        });
+          // Add to transactions log
+          await addDoc(collection(db, 'transactions'), {
+            userId: w.userId,
+            type: 'withdrawal_payout',
+            title: `Withdrawal to ${w.bankName} (${w.accountNumber})`,
+            amount: w.amount,
+            transferCode: data.transferCode,
+            reference: data.reference,
+            status: 'completed',
+            createdAt: Date.now()
+          });
+        } catch (dbErr: any) {
+          if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
+            markQuotaExhausted();
+            console.warn("Paystack succeeded, but Firestore quota blocked updating the local DB state.");
+            alert("Paystack payout succeeded, but database sync is paused due to quota. Please mark manually later.");
+          }
+        }
 
         // Email artisan
         if (artisanUser?.email) {
@@ -278,6 +363,10 @@ export default function AdminDashboard() {
 
   const rejectWithdrawal = async (w: Withdrawal) => {
     if (!confirm(`Reject this withdrawal and refund ₦${w.amount.toLocaleString()} back to the artisan's wallet?`)) return;
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Withdrawals cannot be rejected right now.");
+      return;
+    }
 
     try {
       await updateDoc(doc(db, 'withdrawals', w.id), {
@@ -291,13 +380,22 @@ export default function AdminDashboard() {
 
       alert(`Withdrawal rejected. ₦${w.amount.toLocaleString()} refunded to artisan's wallet.`);
       fetchData();
-    } catch (error) {
-      console.error('Failed to reject withdrawal:', error);
-      alert('Failed to reject and refund withdrawal.');
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Withdrawals cannot be rejected right now.");
+      } else {
+        console.error('Failed to reject withdrawal:', error);
+        alert('Failed to reject and refund withdrawal.');
+      }
     }
   };
 
   const markWithdrawalComplete = async (withdrawalId: string) => {
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Payouts cannot be marked complete right now.");
+      return;
+    }
     try {
       const withdrawalDoc = withdrawals.find(w => w.id === withdrawalId);
       if (!withdrawalDoc) return;
@@ -343,9 +441,14 @@ export default function AdminDashboard() {
 
       alert(`✅ Withdrawal marked as completed! ₦${withdrawalDoc.amount.toLocaleString()} marked as paid and artisan notified.`);
       fetchData();
-    } catch (error) {
-      console.error("Failed to update withdrawal", error);
-      alert("Failed to update: " + error);
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Partially applied manual mark completion before hitting quota limits.");
+      } else {
+        console.error("Failed to update withdrawal", error);
+        alert("Failed to update: " + error);
+      }
     }
   };
 
@@ -436,8 +539,29 @@ export default function AdminDashboard() {
       alert('✅ Paystack configuration saved successfully! Keys are safely stored and active for automated bank payouts.');
       checkLiveBalance();
     } catch (error: any) {
-      console.error('Save configuration error:', error);
-      alert('Error saving configuration: ' + (error?.message || error));
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        
+        if (cleanPublic) localStorage.setItem('paystack_public_key', cleanPublic);
+        if (cleanSecret) localStorage.setItem('paystack_secret_key', cleanSecret);
+        
+        try {
+          await fetch('/api/paystack-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              publicKey: cleanPublic,
+              secretKey: cleanSecret
+            })
+          });
+        } catch (e) { }
+
+        alert('⚠️ System quota limit reached. Paystack configuration saved locally in the browser session, but cloud sync is disabled.');
+        checkLiveBalance();
+      } else {
+        console.error('Save configuration error:', error);
+        alert('Error saving configuration: ' + (error?.message || error));
+      }
     }
   };
 

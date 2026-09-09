@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button';
 import { Send, UserCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sendEmail } from '../lib/email';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 export default function Messages() {
   const { user } = useAuthStore();
@@ -96,6 +97,11 @@ export default function Messages() {
     e.preventDefault();
     if (!user || !activeChat || !newMessage.trim()) return;
 
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Messages cannot be sent at this time.");
+      return;
+    }
+
     try {
       const msgText = newMessage.trim();
       setNewMessage(''); // optimistic clear
@@ -133,7 +139,11 @@ export default function Messages() {
         });
       }
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Messages cannot be sent at this time.");
+      }
       console.error("Error sending message:", error);
     }
   };
@@ -244,6 +254,11 @@ export default function Messages() {
                         return;
                       }
 
+                      if (isQuotaExhausted()) {
+                        alert("System quota limit reached for today. Job offers cannot be created right now.");
+                        return;
+                      }
+
                       // Create Escrow Job
                       addDoc(collection(db, 'jobs'), {
                         customerId: user.id,
@@ -283,7 +298,15 @@ export default function Messages() {
                         document.getElementById('quick-job-form')?.classList.add('hidden');
                         titleInput.value = '';
                         amountInput.value = '';
-                      }).catch(console.error);
+                      }).catch((err: any) => {
+                        if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
+                          markQuotaExhausted();
+                          alert("System quota limit reached for today. Job offers cannot be created right now.");
+                        } else {
+                          console.error("Job creation failed", err);
+                          alert("Failed to send job offer.");
+                        }
+                      });
                     }}
                   >
                     Send Offer

@@ -9,6 +9,7 @@ import { Input } from '../components/ui/input';
 import { ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 import { PaystackButton } from 'react-paystack';
 
@@ -33,13 +34,22 @@ export default function JobsAndEscrow() {
     if (!user) return;
     if (!confirm('Clear your prototype wallet balance back to ₦0 for live production readiness?')) return;
     setResettingBalance(true);
+    
+    if (isQuotaExhausted()) {
+      useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+      alert('Balance reset in current session (Cloud sync disabled due to quota limits).');
+      setResettingBalance(false);
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
       useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
       alert('✅ Wallet balance has been reset to ₦0 successfully!');
     } catch (e: any) {
       console.error(e);
-      if (e?.code === 'resource-exhausted') {
+      if (e?.code === 'resource-exhausted' || e?.message?.includes('quota')) {
+        markQuotaExhausted();
         useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
         alert('Balance reset in current session. Database write quota limit will sync when refreshed.');
       } else {
@@ -148,9 +158,15 @@ export default function JobsAndEscrow() {
       }
 
       alert(`✅ Escrow funded! ₦${job.amount.toLocaleString()} is securely held in vault. ${job.artisanName} has been notified to proceed!`);
-    } catch (error) {
-      console.error("Fund escrow error:", error);
-      alert("Notice: Payment completed. If status doesn't refresh automatically, reload page.");
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        console.warn("Firestore write quota reached. State preserved locally until next load.");
+        alert("Payment verified. Status updated locally. Cloud sync disabled until quota resets.");
+      } else {
+        console.error("Fund escrow error:", error);
+        alert("Notice: Payment completed. If status doesn't refresh automatically, reload page.");
+      }
     }
   };
 
@@ -289,7 +305,7 @@ export default function JobsAndEscrow() {
 
       // 7. Notify admin
       sendEmail({
-        to: 'ayorindesamuel705@gmail.com',
+        to: 'info@mooregloballtd.online',
         subject: `🚨 New Escrow Payout: ₦${artisanPayout.toLocaleString()} for ${job.artisanName}`,
         html: `
           <h2>New Escrow Payout to Disburse</h2>
@@ -304,9 +320,14 @@ export default function JobsAndEscrow() {
 
       setOtpModalJob(null);
       alert(`🎉 Escrow Release Authorized! 9jaKonet Admin has been notified to disburse ₦${artisanPayout.toLocaleString()} to ${job.artisanName}'s bank account. Please take a moment to rate your experience below.`);
-    } catch (error) {
-      console.error(error);
-      setOtpError('Failed to complete escrow release. Please try again.');
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        setOtpError('System quota limit reached for today. Partially applied updates. Cloud sync paused.');
+      } else {
+        console.error(error);
+        setOtpError('Failed to complete escrow release. Please try again.');
+      }
     } finally {
       setReleasing(false);
     }
@@ -317,6 +338,11 @@ export default function JobsAndEscrow() {
     if (!review || !review.score) {
        alert("Please select a star rating");
        return;
+    }
+
+    if (isQuotaExhausted()) {
+      alert("System quota limit reached for today. Reviews cannot be submitted right now.");
+      return;
     }
 
     try {
@@ -357,8 +383,13 @@ export default function JobsAndEscrow() {
       }
 
       alert("Thank you! Your review has been published.");
-    } catch (error) {
-      console.error("Failed to submit review", error);
+    } catch (error: any) {
+      if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
+        markQuotaExhausted();
+        alert("System quota limit reached for today. Reviews cannot be submitted right now.");
+      } else {
+        console.error("Failed to submit review", error);
+      }
     }
   };
 

@@ -49,16 +49,22 @@ export async function compressDataUrl(
     mimeType = 'image/jpeg'
   } = options;
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
+    // 3-second safety timer so image compression can NEVER hang or block execution
+    const timer = setTimeout(() => {
+      resolve(dataUrl);
+    }, 3000);
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
     img.onerror = () => {
-      // If it fails to load as an image, return original or reject
+      clearTimeout(timer);
       resolve(dataUrl);
     };
 
     img.onload = () => {
+      clearTimeout(timer);
       try {
         let width = img.naturalWidth || img.width;
         let height = img.naturalHeight || img.height;

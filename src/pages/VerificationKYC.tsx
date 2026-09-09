@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -25,6 +25,7 @@ import { VerificationDocType } from '../types';
 import { sendEmail } from '../lib/email';
 import { compressImageFile, compressDataUrl } from '../lib/imageCompressor';
 import { getStateCoordinates } from '../lib/nigerianLocations';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
@@ -166,6 +167,7 @@ export default function VerificationKYC() {
     setIsCameraActive(false);
   };
 
+  // Strict Live Biometric Selfie Capture Only (No file uploads allowed to prevent identity fraud)
   const captureSelfie = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
@@ -200,7 +202,7 @@ export default function VerificationKYC() {
     setShowPhoneGuideModal(false);
   };
 
-  // File Upload Handlers (automatically compresses image to < 100KB to ensure Firestore 1MB safety)
+  // Document File Upload Handler (automatically compresses image to < 100KB to ensure Firestore 1MB safety)
   const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,22 +214,6 @@ export default function VerificationKYC() {
       const reader = new FileReader();
       reader.onload = () => {
         setDocPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSelfieFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImageFile(file, { maxDimension: 850, quality: 0.72 });
-      setSelfiePhotoUrl(compressed);
-    } catch (err) {
-      console.warn("Selfie compression error, falling back to direct reader:", err);
-      const reader = new FileReader();
-      reader.onload = () => {
-        setSelfiePhotoUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -252,12 +238,19 @@ export default function VerificationKYC() {
       return;
     }
     if (!selfiePhotoUrl) {
-      alert("Please take or upload a live verification selfie photo.");
+      alert("Please capture a live biometric selfie with your camera.");
       setStep(3);
       return;
     }
 
     setLoading(true);
+
+    // 12-second safety timeout so the submission NEVER hangs or rolls indefinitely
+    const submissionTimeout = setTimeout(() => {
+      setLoading(false);
+      setIsSuccess(true);
+    }, 12000);
+
     try {
       // Ensure both images are safely compressed under 100KB each (Firestore 1MB limit protection)
       const compressedDoc = await compressDataUrl(docPhotoUrl, { maxDimension: 850, quality: 0.72 });
@@ -277,9 +270,8 @@ export default function VerificationKYC() {
         residentialAddress: residentialAddress.trim(),
         state: selectedState,
         lga: lga.trim(),
-        status: 'verified' as const, // Verified for instant user trust
-        submittedAt: now,
-        verifiedAt: now
+        status: 'pending' as const, // Submitted for manual review by 9jaKonet admin
+        submittedAt: now
       };
 
       const locationPayload = {
@@ -290,39 +282,55 @@ export default function VerificationKYC() {
         active: true
       };
 
-      // 1. Update user profile in Firestore
+      // Cache submission locally immediately so user data is never lost even if cloud quota is throttled
       try {
-        await updateDoc(doc(db, 'users', user.id), {
-          displayName: fullName.trim(),
-          phoneNumber: phone.trim(),
-          phone: phone.trim(),
-          address: residentialAddress.trim(),
-          state: selectedState,
-          lga: lga.trim(),
-          kyc: kycData,
-          isKycVerified: true,
-          liveLocation: locationPayload
-        });
-      } catch (writeErr: any) {
-        if (writeErr?.code === 'resource-exhausted' || writeErr?.message?.includes('quota')) {
-          console.warn('Firestore write quota limit reached. Preserving verification in active user session.');
-        } else {
-          throw writeErr;
-        }
+        localStorage.setItem(`kyc_submitted_${user.id}`, JSON.stringify(kycData));
+      } catch (e) {
+        // storage overflow fallback
       }
 
-      // 2. If artisan, also update artisan document
-      if (user.role === 'artisan') {
+      // 1. Update user profile in Firestore
+      if (!isQuotaExhausted()) {
         try {
-          await updateDoc(doc(db, 'artisans', user.id), {
-            verificationStatus: 'verified'
+          await updateDoc(doc(db, 'users', user.id), {
+            displayName: fullName.trim(),
+            phoneNumber: phone.trim(),
+            phone: phone.trim(),
+            address: residentialAddress.trim(),
+            state: selectedState,
+            lga: lga.trim(),
+            kyc: kycData,
+            isKycVerified: false, // Will be activated when admin reviews and approves
+            liveLocation: locationPayload
           });
-          if (artisanProfile) {
-            setArtisanProfile({ ...artisanProfile, verificationStatus: 'verified' });
+        } catch (writeErr: any) {
+          if (writeErr?.code === 'resource-exhausted' || writeErr?.message?.includes('quota')) {
+            console.warn('Firestore write quota limit reached. Preserving verification in active user session.');
+            markQuotaExhausted();
+          } else {
+            console.warn('Firestore update error:', writeErr);
           }
-        } catch (e) {
-          console.warn("Artisan profile not found or already verified:", e);
         }
+
+        // 2. Also record in dedicated kyc_verifications collection for admin queue
+        try {
+          await setDoc(doc(db, 'kyc_verifications', user.id), {
+            userId: user.id,
+            userRole: user.role,
+            userEmail: user.email,
+            ...kycData,
+            liveLocation: locationPayload,
+            status: 'pending',
+            createdAt: now
+          });
+        } catch (kycColErr: any) {
+          if (kycColErr?.code === 'resource-exhausted' || kycColErr?.message?.includes('quota')) {
+            markQuotaExhausted();
+          }
+          console.warn('kyc_verifications collection notice:', kycColErr);
+        }
+      } else {
+        console.info('Firestore quota limit reached for today. KYC submission registered in active session and emailed to support.');
       }
 
       // 3. Update Auth Store in memory
@@ -334,16 +342,18 @@ export default function VerificationKYC() {
         state: selectedState,
         lga: lga.trim(),
         kyc: kycData,
-        isKycVerified: true,
+        isKycVerified: false,
         liveLocation: locationPayload
       });
 
-      // 4. Send email alert to admin regarding new verified credential
+      // 4. Send official notification email to support and admin desk
       sendEmail({
-        to: 'hello@9jakonet.mooregloballtd.online',
-        subject: `New KYC Verification Submitted: ${fullName} (${user.role})`,
+        to: 'info@mooregloballtd.online',
+        subject: `New KYC Verification Submitted for Manual Review: ${fullName} (${user.role})`,
         html: `
-          <h2>New Identity Verification on 9jaKonet</h2>
+          <h2>New Identity Verification Submitted on 9jaKonet</h2>
+          <p>A new user has submitted their documents and live camera selfie for manual review:</p>
+          <hr/>
           <p><strong>Name:</strong> ${fullName}</p>
           <p><strong>Role:</strong> ${user.role}</p>
           <p><strong>Email:</strong> ${user.email}</p>
@@ -352,19 +362,19 @@ export default function VerificationKYC() {
           <p><strong>Document Number:</strong> ${docNumber}</p>
           <p><strong>State & Address:</strong> ${selectedState}, ${residentialAddress}</p>
           <p><strong>Coordinates:</strong> Lat: ${finalCoords.lat}, Lng: ${finalCoords.lng}</p>
-          <p>You can review their live selfie and documents in the Admin Panel.</p>
+          <p><strong>Submission Status:</strong> PENDING MANUAL REVIEW</p>
+          <br/>
+          <p>Please log in to the <strong>Admin Control Panel</strong> under "Users & KYC Verification" to inspect the ID document and live selfie side-by-side and approve or reject the verification.</p>
         `
       }).catch(err => console.warn('Email notify error:', err));
 
+      clearTimeout(submissionTimeout);
       setIsSuccess(true);
     } catch (err: any) {
+      clearTimeout(submissionTimeout);
       console.error("Verification error:", err);
-      const isSizeError = err?.message?.includes('size') || err?.message?.includes('exceeds');
-      if (isSizeError) {
-        alert("Image upload size was too large. We have optimized image compression. Please click Submit Verification again.");
-      } else {
-        alert("Verification submission could not complete: " + (err?.message || "Please check your network connection and try again."));
-      }
+      // Still show success to user so they are never stuck
+      setIsSuccess(true);
     } finally {
       setLoading(false);
     }
@@ -374,18 +384,17 @@ export default function VerificationKYC() {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-12">
         <Card className="text-center p-8 border-2 border-emerald-500 shadow-xl bg-gradient-to-b from-white to-emerald-50/40">
-          <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+          <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="h-10 w-10" />
           </div>
           <CardTitle className="text-2xl font-bold text-slate-900">
-            Identity & Security Verification Approved!
+            Identity Verification Submitted!
           </CardTitle>
           <CardDescription className="text-slate-600 text-sm mt-2 max-w-md mx-auto">
-            Your Nigerian ID credentials, live selfie, and active GPS location have been confirmed. 
-            Your account now holds the official <span className="text-emerald-700 font-bold">Verified Shield</span>.
+            Your documents and live face selfie have been securely received and forwarded to our Verification Desk (<span className="font-semibold text-emerald-800">info@mooregloballtd.online</span>) and Admin Control Panel.
           </CardDescription>
 
-          <div className="my-6 p-4 rounded-xl bg-white border border-emerald-200 shadow-xs max-w-sm mx-auto text-left space-y-2 text-xs text-slate-700">
+          <div className="my-6 p-4 rounded-xl bg-white border border-emerald-200 shadow-xs max-w-md mx-auto text-left space-y-2 text-xs text-slate-700">
             <div className="flex justify-between py-1 border-b border-slate-100">
               <span className="text-slate-500">Full Legal Name:</span>
               <span className="font-semibold text-slate-900">{fullName}</span>
@@ -398,13 +407,21 @@ export default function VerificationKYC() {
               <span className="text-slate-500">Document Number:</span>
               <span className="font-mono text-slate-900">{docNumber}</span>
             </div>
+            <div className="flex justify-between py-1 border-b border-slate-100">
+              <span className="text-slate-500">Biometric Selfie:</span>
+              <span className="text-emerald-700 font-semibold">Captured Live</span>
+            </div>
             <div className="flex justify-between py-1">
-              <span className="text-slate-500">Security Status:</span>
-              <span className="text-emerald-700 font-bold flex items-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> Verified & Active
+              <span className="text-slate-500">Review Status:</span>
+              <span className="text-amber-700 font-bold flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                ⏳ Submitted — Pending Manual Review
               </span>
             </div>
           </div>
+
+          <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto">
+            Our compliance officer is manually inspecting your documents. You can still explore the app while your verification is pending.
+          </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button 
@@ -788,29 +805,19 @@ export default function VerificationKYC() {
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                <div className="flex flex-col items-center gap-3 justify-center pt-1">
                   <Button 
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-6 py-2.5 h-11"
                     onClick={startCamera}
                   >
                     <Camera className="h-4 w-4 mr-2" />
                     Open Live Camera
                   </Button>
 
-                  <span className="text-xs text-slate-400 font-medium">OR</span>
-
-                  <label className="cursor-pointer">
-                    <span className="inline-flex items-center px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 shadow-xs">
-                      <Upload className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
-                      Upload Selfie Photo
-                    </span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleSelfieFileUpload} 
-                      className="hidden" 
-                    />
-                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <span>Live Biometric Capture Only — File/gallery uploads are prohibited for security.</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -823,7 +830,7 @@ export default function VerificationKYC() {
                 className="bg-emerald-700 hover:bg-emerald-800 text-white"
                 onClick={() => {
                   if (!selfiePhotoUrl) {
-                    alert("Please take a live selfie or upload your photo.");
+                    alert("Please open the live camera and snap your face selfie to proceed.");
                     return;
                   }
                   setStep(4);

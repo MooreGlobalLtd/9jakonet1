@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { useAuthStore } from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 export default function Explore() {
   const [allArtisans, setAllArtisans] = useState<(ArtisanProfile & { user: User })[]>([]);
@@ -88,12 +89,26 @@ export default function Explore() {
     if (existingChatId) {
       navigate(`/messages?chat=${existingChatId}`);
     } else {
-      // Create new chat
-      const newChat = await addDoc(chatsRef, {
-        participants: [user.id, artisanId],
-        updatedAt: Date.now(),
-      });
-      navigate(`/messages?chat=${newChat.id}`);
+      if (isQuotaExhausted()) {
+        alert("System quota limit reached for today. New conversations cannot be started right now. Try again later.");
+        return;
+      }
+      try {
+        // Create new chat
+        const newChat = await addDoc(chatsRef, {
+          participants: [user.id, artisanId],
+          updatedAt: Date.now(),
+        });
+        navigate(`/messages?chat=${newChat.id}`);
+      } catch (err: any) {
+        if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
+          markQuotaExhausted();
+          alert("System quota limit reached for today. New conversations cannot be started right now. Try again later.");
+        } else {
+          alert("Failed to start conversation.");
+          console.error(err);
+        }
+      }
     }
   };
 

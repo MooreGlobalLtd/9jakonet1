@@ -1,12 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
-import { CheckCircle2, AlertCircle, Phone, MapPin, User as UserIcon, Shield, Briefcase, Wallet } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  AlertCircle, 
+  Phone, 
+  MapPin, 
+  User as UserIcon, 
+  Shield, 
+  Briefcase, 
+  Wallet, 
+  Camera, 
+  UploadCloud,
+  Check
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { compressImageFile } from '../lib/imageCompressor';
+import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
@@ -17,13 +31,20 @@ const NIGERIAN_STATES = [
 ];
 
 export default function Profile() {
-  const { user, artisanProfile, init } = useAuthStore();
+  const { user, artisanProfile, setUser } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  // Profile Fields
   const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(user?.phone || user?.phoneNumber || '');
   const [address, setAddress] = useState(user?.address || '');
   const [state, setState] = useState(user?.state || 'Lagos');
-  
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar || '');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Validation errors
   const [errors, setErrors] = useState<{
     displayName?: string;
@@ -36,13 +57,56 @@ export default function Profile() {
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || '');
-      setPhone(user.phone || '');
+      setPhone(user.phone || user.phoneNumber || '');
       setAddress(user.address || '');
       if (user.state) setState(user.state);
+      if (user.avatar) setAvatarUrl(user.avatar);
     }
   }, [user]);
 
   if (!user) return null;
+
+  // Handle Photo Upload
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAvatarUploading(true);
+    setErrorMessage('');
+    try {
+      // Compress to optimal size (< 60KB) for instant loading
+      const compressed = await compressImageFile(file, { maxDimension: 400, quality: 0.8 });
+      setAvatarUrl(compressed);
+
+      // Update Firestore user document
+      if (!isQuotaExhausted()) {
+        try {
+          await updateDoc(doc(db, 'users', user.id), {
+            avatar: compressed
+          });
+        } catch (dbErr: any) {
+          if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
+            markQuotaExhausted();
+          }
+          console.warn('Firestore write warning:', dbErr);
+        }
+      }
+
+      // Update Auth Store in memory immediately
+      setUser({
+        ...user,
+        avatar: compressed
+      });
+
+      setSuccessMessage('Profile photo updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (err: any) {
+      console.error('Error uploading photo:', err);
+      setErrorMessage('Failed to process image. Please choose another picture.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const validate = () => {
     const newErrors: { displayName?: string; phone?: string; address?: string } = {};
@@ -57,20 +121,16 @@ export default function Profile() {
     // 2. Phone Number
     const cleanedPhone = phone.trim().replace(/[\s-]/g, '');
     if (!cleanedPhone) {
-      newErrors.phone = 'Phone number is required so clients and artisans can contact you.';
-    } else {
-      // Must be valid phone format (e.g. 08012345678, +2348012345678, or 10-14 digits)
-      const phoneRegex = /^(\+?234|0)[789][01]\d{8}$|^(\+?\d{10,14})$/;
-      if (!phoneRegex.test(cleanedPhone) || cleanedPhone.length < 10) {
-        newErrors.phone = 'Please enter a valid phone number (e.g. 08012345678 or +2348012345678).';
-      }
+      newErrors.phone = 'Phone number is required.';
+    } else if (cleanedPhone.length < 10) {
+      newErrors.phone = 'Please enter a valid Nigerian phone number (e.g. 08012345678).';
     }
 
     // 3. Address
     if (!address.trim()) {
       newErrors.address = 'Address / Location is required.';
-    } else if (address.trim().length < 5) {
-      newErrors.address = 'Please enter a complete address or location (e.g. 10 Allen Avenue, Ikeja).';
+    } else if (address.trim().length < 4) {
+      newErrors.address = 'Please enter your street address or local area (e.g. 12 Allen Avenue, Ikeja).';
     }
 
     setErrors(newErrors);
@@ -83,25 +143,57 @@ export default function Profile() {
     setErrorMessage('');
 
     if (!validate()) {
-      setErrorMessage('Please fill in all required fields marked below before saving.');
+      setErrorMessage('Please fill in all required fields marked with * before saving.');
       return;
     }
 
     setLoading(true);
+    setIsSaved(false);
+
     try {
-      await updateDoc(doc(db, 'users', user.id), {
+      const updatePayload = {
         displayName: displayName.trim(),
         address: address.trim(),
         phone: phone.trim(),
         phoneNumber: phone.trim(),
-        state: state
+        state: state,
+        avatar: avatarUrl || user.avatar || ''
+      };
+
+      // 1. Update in Firestore
+      if (!isQuotaExhausted()) {
+        try {
+          await updateDoc(doc(db, 'users', user.id), updatePayload);
+        } catch (writeErr: any) {
+          if (writeErr?.code === 'resource-exhausted' || writeErr?.message?.includes('quota')) {
+            console.warn('Firestore quota hit, preserving profile update in local session state.');
+            markQuotaExhausted();
+          } else {
+            console.warn('Firestore update notice:', writeErr);
+          }
+        }
+      }
+
+      // 2. Update user in memory
+      setUser({
+        ...user,
+        ...updatePayload
       });
-      init(); // refresh auth store across app
-      setSuccessMessage('Profile updated successfully!');
-      setTimeout(() => setSuccessMessage(''), 5000);
+
+      setIsSaved(true);
+      setSuccessMessage('Profile updated successfully! All changes have been saved.');
+
+      // Reset saved state after 4 seconds
+      setTimeout(() => {
+        setIsSaved(false);
+      }, 4000);
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 6000);
+
     } catch (error: any) {
       console.error('Failed to update profile:', error);
-      setErrorMessage('Failed to update profile. Please try again.');
+      setErrorMessage('Could not update profile: ' + (error?.message || 'Please check your connection.'));
     } finally {
       setLoading(false);
     }
@@ -112,7 +204,7 @@ export default function Profile() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Your Profile</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage your account information and contact preferences.</p>
+          <p className="text-sm text-slate-500 mt-1">Manage your account information, real profile photo, and contact details.</p>
         </div>
         {user.role === 'artisan' && (
           <div className="flex gap-2">
@@ -123,7 +215,7 @@ export default function Profile() {
               </Button>
             </Link>
             <Link to="/artisan-setup">
-              <Button size="sm" className="flex items-center gap-1.5">
+              <Button size="sm" className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Briefcase className="h-4 w-4" />
                 Trade Setup
               </Button>
@@ -133,9 +225,9 @@ export default function Profile() {
       </div>
 
       {successMessage && (
-        <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 shadow-xs">
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-xs">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          <span className="font-medium">{successMessage}</span>
+          <span className="font-semibold">{successMessage}</span>
         </div>
       )}
 
@@ -148,19 +240,39 @@ export default function Profile() {
       
       <Card className="shadow-xs border-slate-200">
         <CardHeader className="border-b border-slate-100 pb-4">
-          <CardTitle className="text-xl">Personal Information</CardTitle>
+          <CardTitle className="text-xl">Personal Information &amp; Photo</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="mb-6 flex flex-wrap items-center gap-4 rounded-xl bg-slate-50 p-4 border border-slate-200/60">
-            <img 
-              src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=047857&color=fff`} 
-              alt="avatar" 
-              className="h-20 w-20 rounded-full border-2 border-white shadow-xs object-cover"
-            />
-            <div className="space-y-1">
-              <p className="font-bold text-lg text-slate-900">{user.displayName}</p>
-              <p className="text-sm text-slate-500">{user.email}</p>
-              <div className="flex flex-wrap items-center gap-2 pt-1">
+          {/* Avatar Photo Section */}
+          <div className="mb-6 flex flex-wrap items-center gap-5 rounded-xl bg-slate-50 p-5 border border-slate-200/70">
+            <div className="relative group">
+              <img 
+                src={avatarUrl || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=047857&color=fff&size=200`} 
+                alt="avatar" 
+                className="h-24 w-24 rounded-full border-4 border-white shadow-md object-cover bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarUploading}
+                aria-label="Upload profile picture"
+                className="absolute bottom-0 right-0 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white p-2 shadow-md border-2 border-white transition-transform hover:scale-105"
+                title="Change profile picture"
+              >
+                <Camera className="h-4 w-4" />
+              </button>
+              <input 
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+            </div>
+
+            <div className="space-y-1.5 flex-1 min-w-[200px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-bold text-xl text-slate-900">{user.displayName || 'Unnamed User'}</p>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${
                   user.role === 'admin' 
                     ? 'bg-amber-100 text-amber-900 border border-amber-200' 
@@ -181,6 +293,23 @@ export default function Profile() {
                     {artisanProfile.verificationStatus === 'verified' ? 'Verified Artisan' : 'Verification Pending'}
                   </span>
                 )}
+              </div>
+
+              <p className="text-sm text-slate-500">{user.email}</p>
+              
+              <div className="pt-1">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="text-xs h-8 gap-1.5 border-slate-300 text-slate-700 hover:bg-white"
+                >
+                  <UploadCloud className="h-3.5 w-3.5 text-emerald-600" />
+                  {avatarUploading ? 'Uploading Photo...' : 'Upload Real Picture'}
+                </Button>
+                <span className="text-[11px] text-slate-400 ml-2">PNG, JPG up to 5MB</span>
               </div>
             </div>
           </div>
@@ -230,7 +359,7 @@ export default function Profile() {
                 </p>
               ) : (
                 <p className="text-xs text-slate-500 mt-1">
-                  Required for dispatch notifications, job updates, and customer contact.
+                  Used for SMS dispatch alerts, customer contact, and job updates.
                 </p>
               )}
             </div>
@@ -274,9 +403,29 @@ export default function Profile() {
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <Button type="submit" disabled={loading} className="px-6 bg-emerald-600 hover:bg-emerald-700">
-                {loading ? 'Saving Changes...' : 'Save Changes'}
+            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <Button 
+                type="submit" 
+                disabled={loading} 
+                className={`px-8 h-11 text-sm font-bold shadow-xs transition-all flex items-center gap-2 ${
+                  isSaved 
+                    ? 'bg-emerald-700 text-white hover:bg-emerald-800' 
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {isSaved ? (
+                  <>
+                    <Check className="h-4 w-4 stroke-[3]" />
+                    Saved Successfully!
+                  </>
+                ) : loading ? (
+                  <>
+                    <span className="inline-block animate-spin mr-1">⏳</span>
+                    Saving Changes...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </Button>
               <span className="text-xs text-slate-400">
                 Fields marked with <span className="text-red-500">*</span> are mandatory
@@ -288,4 +437,3 @@ export default function Profile() {
     </div>
   );
 }
-

@@ -1,7 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+
+// Suppress internal Firebase SDK console.error logs for quota limits
+setLogLevel('silent');
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);

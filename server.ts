@@ -83,7 +83,7 @@ async function startServer() {
 
     try {
       const data = await resend.emails.send({
-        from: '9jaKonet <hello@9jakonet.mooregloballtd.online>',
+        from: '9jaKonet <info@mooregloballtd.online>',
         to: Array.isArray(to) ? to : [to],
         subject: subject,
         html: html,
@@ -513,7 +513,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
 
     // 10. Contact Support & Admin Help
     if (/support|contact|help|email|phone number|call|admin|customer care/.test(q)) {
-      return "### 9jaKonet Support & Customer Concierge 💬\n\nNeed direct assistance from our management team?\n\n- **Official Support Email**: `hello@9jakonet.mooregloballtd.online`\n- **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)\n- **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.";
+      return "### 9jaKonet Support & Customer Concierge 💬\n\nNeed direct assistance from our management team?\n\n- **Official Support Email**: `info@mooregloballtd.online`\n- **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)\n- **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.";
     }
 
     // 11. Greetings & Pleasantries
@@ -572,20 +572,20 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
         parts: [{ text: trimmedMessage }]
       });
 
-      // Try candidate models in order, with gemini-3.8-flash first
-      const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      // Try candidate models in order, prioritizing flash models for fast, reliable responses
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
       let reply: string | null = null;
 
       for (const model of candidateModels) {
         try {
-          // Add a 7.5 second timeout race to ensure lightning-fast responsiveness even if Gemini cloud is under heavy load
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 7500));
+          // 8-second timeout per model attempt
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
           const apiPromise = ai.models.generateContent({
             model,
             contents: formattedContents,
             config: {
               systemInstruction: KONETBOT_SYSTEM_INSTRUCTION,
-              temperature: 0.65,
+              temperature: 0.7,
             }
           }).then(res => res?.text || null);
 
@@ -596,7 +596,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
           }
         } catch (modelErr: any) {
           const errStr = modelErr?.message || String(modelErr);
-          console.warn(`[KonetBot] Model ${model} returned: ${errStr.slice(0, 100)}. Checking next option...`);
+          console.warn(`[KonetBot] Model ${model} returned: ${errStr.slice(0, 100)}. Trying next model...`);
         }
       }
 

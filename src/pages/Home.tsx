@@ -345,8 +345,8 @@ export default function Home() {
               <ul className="space-y-3 text-sm">
                 <li className="flex items-start gap-3">
                   <span className="text-emerald-500 mt-0.5">✉</span>
-                  <a href="mailto:support@9jakonet.mooregloballtd.online" className="hover:text-emerald-400 transition-colors">
-                    support@9jakonet.mooregloballtd.online
+                  <a href="mailto:info@mooregloballtd.online" className="hover:text-emerald-400 transition-colors">
+                    info@mooregloballtd.online
                   </a>
                 </li>
                 <li className="flex items-start gap-3">
