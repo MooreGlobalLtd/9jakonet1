@@ -421,6 +421,7 @@ export default function VerificationKYC() {
   }
 
   if (user?.kyc?.status === 'rejected' && !isSuccess && !isRetrying) {
+    const rejectReason = user?.kyc?.rejectReason || 'The submitted documents or selfie were unclear, invalid, or mismatched.';
     return (
       <div className="container mx-auto max-w-2xl px-4 py-12">
         <Card className="text-center p-8 border-2 border-rose-500 shadow-xl bg-gradient-to-b from-white to-rose-50/40">
@@ -432,7 +433,7 @@ export default function VerificationKYC() {
           </CardTitle>
           <CardDescription className="text-slate-600 text-sm mt-2 max-w-md mx-auto">
             Your recent verification submission could not be approved. <br/>
-            <strong>Reason:</strong> {user.kyc.rejectReason || "The submitted documents or selfie were unclear, invalid, or mismatched."}
+            <strong>Reason:</strong> {rejectReason}
           </CardDescription>
           <Button 
             className="bg-rose-700 hover:bg-rose-800 text-white font-semibold mt-6"
