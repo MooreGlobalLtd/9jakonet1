@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -144,7 +145,9 @@ export default function Dashboard() {
                           <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md capitalize">Urgency: {job.urgency}</span>
                         </div>
                       </div>
-                      <Button variant="outline" size="sm">View Details</Button>
+                      <Link to="/jobs">
+                        <Button variant="outline" size="sm">View Details & Escrow</Button>
+                      </Link>
                     </div>
                   </CardContent>
                 </Card>
