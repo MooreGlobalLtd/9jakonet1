@@ -9,6 +9,7 @@ import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search,
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
+import { withTimeout } from '../lib/timeout';
 
 interface Withdrawal {
   id: string;
@@ -73,25 +74,34 @@ export default function AdminDashboard() {
         kycUpdatePayload['kyc.rejectReason'] = rejectReason;
       }
 
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
+      // Wrap with 5 second timeout so it doesn't freeze the UI if offline/hanging
+      try {
+        await withTimeout(updateDoc(doc(db, 'users', userId), kycUpdatePayload), 5000);
+      } catch (err: any) {
+        if (err.message === 'timeout') {
+          console.warn('Firestore update timed out, continuing optimistically...');
+        } else {
+          throw err;
+        }
+      }
 
       // Also update kyc_verifications record
       try {
-        await updateDoc(doc(db, 'kyc_verifications', userId), {
-          status: newStatus,
-          verifiedAt: Date.now()
-        });
+        await withTimeout(updateDoc(doc(db, 'kyc_verifications', userId), {
+            status: newStatus,
+            verifiedAt: Date.now()
+        }), 2000);
       } catch (e) {
-        // May not exist in old records
+        // May not exist in old records or timed out
       }
 
       // If this user is an artisan, synchronize their artisan verification status
       try {
-        const artisanDoc = await getDoc(doc(db, 'artisans', userId));
-        if (artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
-            verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
+        const artisanDoc: any = await withTimeout(getDoc(doc(db, 'artisans', userId)), 3000);
+        if (artisanDoc && artisanDoc.exists && artisanDoc.exists()) {
+          await withTimeout(updateDoc(doc(db, 'artisans', userId), {
+              verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
+          }), 2000);
         }
       } catch (e) {
         console.warn('Artisan sync notice:', e);
@@ -1500,7 +1510,7 @@ export default function AdminDashboard() {
                             {/* Verification Actions */}
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1.5">
-                                {!isVerified ? (
+                                {!isVerified && (
                                   <Button
                                     size="sm"
                                     type="button"
@@ -1509,7 +1519,18 @@ export default function AdminDashboard() {
                                   >
                                     Approve KYC
                                   </Button>
-                                ) : (
+                                )}
+                                {!isVerified && (
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => handleUpdateUserKycStatus(u.id, 'rejected')}
+                                    className="h-7 text-[11px] bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                                  >
+                                    Decline KYC
+                                  </Button>
+                                )}
+                                {isVerified && (
                                   <Button
                                     size="sm"
                                     variant="outline"

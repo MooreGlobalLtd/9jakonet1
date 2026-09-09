@@ -22,6 +22,8 @@ import { Link } from 'react-router-dom';
 import { compressImageFile } from '../lib/imageCompressor';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
+import { withTimeout } from '../lib/timeout';
+
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
   "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT - Abuja", "Gombe", 
@@ -81,12 +83,14 @@ export default function Profile() {
       // Update Firestore user document
       if (!isQuotaExhausted()) {
         try {
-          await updateDoc(doc(db, 'users', user.id), {
+          await withTimeout(updateDoc(doc(db, 'users', user.id), {
             avatar: compressed
-          });
+          }), 5000);
         } catch (dbErr: any) {
           if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
             markQuotaExhausted();
+          } else if (dbErr?.message === 'timeout') {
+            console.warn('Firestore update timed out, saving locally...');
           }
           console.warn('Firestore write warning:', dbErr);
         }
@@ -163,11 +167,13 @@ export default function Profile() {
       // 1. Update in Firestore
       if (!isQuotaExhausted()) {
         try {
-          await updateDoc(doc(db, 'users', user.id), updatePayload);
+          await withTimeout(updateDoc(doc(db, 'users', user.id), updatePayload), 5000);
         } catch (writeErr: any) {
           if (writeErr?.code === 'resource-exhausted' || writeErr?.message?.includes('quota')) {
             console.warn('Firestore quota hit, preserving profile update in local session state.');
             markQuotaExhausted();
+          } else if (writeErr?.message === 'timeout') {
+            console.warn('Firestore update timed out, saving locally...');
           } else {
             console.warn('Firestore update notice:', writeErr);
           }

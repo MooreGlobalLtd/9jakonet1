@@ -27,14 +27,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const data = await resend.emails.send({
+    const response = await resend.emails.send({
       from: '9jaKonet <info@mooregloballtd.online>',
       to: Array.isArray(to) ? to : [to],
       subject: subject,
       html: html,
     });
 
-    return res.status(200).json({ success: true, data });
+    if (response.error) {
+      console.warn('Resend send failed with custom domain, attempting fallback sender (onboarding@resend.dev)...', response.error);
+      const fallbackResponse = await resend.emails.send({
+        from: '9jaKonet <onboarding@resend.dev>',
+        to: Array.isArray(to) ? to : [to],
+        subject: subject,
+        html: html,
+      });
+      return res.status(200).json({ success: fallbackResponse.error ? false : true, data: fallbackResponse.data, error: fallbackResponse.error });
+    }
+
+    return res.status(200).json({ success: true, data: response.data });
   } catch (error) {
     console.error('Failed to send email via Resend:', error);
     return res.status(500).json({ success: false, error: 'Failed to send email' });
