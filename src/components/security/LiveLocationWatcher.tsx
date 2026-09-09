@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { MapPin, AlertTriangle, ShieldCheck, RefreshCw, Smartphone, Check, ChevronRight } from 'lucide-react';
+import { MapPin, AlertTriangle, ShieldCheck, RefreshCw, Smartphone, Check, ChevronRight, X } from 'lucide-react';
 import { Button } from '../ui/button';
+import { getStateCoordinates } from '../../lib/nigerianLocations';
 
 export default function LiveLocationWatcher() {
   const { user, setUser } = useAuthStore();
@@ -14,6 +15,20 @@ export default function LiveLocationWatcher() {
   const [phoneOsTab, setPhoneOsTab] = useState<'android' | 'ios'>('android');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [denialReason, setDenialReason] = useState<string | null>(null);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const lastSyncTimestampRef = useRef<number>(0);
+
+  // Check if user already has verified/saved location on profile
+  useEffect(() => {
+    if (user?.liveLocation?.latitude && user?.liveLocation?.longitude) {
+      setCurrentCoords({
+        lat: user.liveLocation.latitude,
+        lng: user.liveLocation.longitude,
+        accuracy: user.liveLocation.accuracy || 250
+      });
+      setLocationStatus('granted');
+    }
+  }, [user?.liveLocation?.latitude, user?.liveLocation?.longitude]);
 
   // Auto-detect Android vs iOS on mount
   useEffect(() => {
@@ -27,32 +42,56 @@ export default function LiveLocationWatcher() {
     }
   }, []);
 
-  const syncLocationToFirebase = useCallback(async (lat: number, lng: number, accuracy?: number) => {
-    if (!user) return;
-    try {
-      const now = Date.now();
-      const locationData = {
-        latitude: lat,
-        longitude: lng,
-        accuracy: accuracy || 0,
-        timestamp: now,
-        active: true
-      };
+  const syncLocationToFirebase = useCallback(async (lat: number, lng: number, accuracy?: number, force = false) => {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser) return;
 
-      await updateDoc(doc(db, 'users', user.id), {
-        liveLocation: locationData
-      });
-
-      setUser({
-        ...user,
-        liveLocation: locationData
-      });
-
-      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    } catch (err) {
-      console.warn('Failed to sync live location to database:', err);
+    const now = Date.now();
+    // Protect against quota exhaustion: maximum 1 write every 30 minutes unless forced by explicit button click
+    if (!force && now - lastSyncTimestampRef.current < 1800000) {
+      return;
     }
-  }, [user, setUser]);
+    lastSyncTimestampRef.current = now;
+
+    const locationData = {
+      latitude: lat,
+      longitude: lng,
+      accuracy: accuracy || 0,
+      timestamp: now,
+      active: true
+    };
+
+    // Always update local store immediately for instant UI responsiveness
+    setUser({
+      ...currentUser,
+      liveLocation: locationData
+    });
+    setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+    try {
+      await updateDoc(doc(db, 'users', currentUser.id), {
+        liveLocation: locationData
+      });
+    } catch (err: any) {
+      // Gracefully handle Firestore quota exceeded without breaking UI
+      if (err?.code === 'resource-exhausted' || err?.message?.includes('Quota limit exceeded')) {
+        console.warn('Firestore daily write quota reached. Live location maintained in active session memory.');
+      } else {
+        console.warn('Notice syncing live location:', err?.message || err);
+      }
+    }
+  }, [setUser]);
+
+  // Fallback to user registered state coordinates
+  const useRegisteredStateLocation = useCallback(() => {
+    const currentUser = useAuthStore.getState().user;
+    const userState = currentUser?.state || 'Lagos';
+    const coords = getStateCoordinates(userState);
+    setCurrentCoords({ lat: coords.lat, lng: coords.lng, accuracy: 250 });
+    setLocationStatus('granted');
+    setShowLocationModal(false);
+    syncLocationToFirebase(coords.lat, coords.lng, 250, true);
+  }, [syncLocationToFirebase]);
 
   const requestAndTrackLocation = useCallback((isUserClick = false) => {
     if (!navigator.geolocation) {
@@ -71,78 +110,60 @@ export default function LiveLocationWatcher() {
         setLocationStatus('granted');
         setIsUpdating(false);
         setShowLocationModal(false);
-        syncLocationToFirebase(latitude, longitude, accuracy);
+        syncLocationToFirebase(latitude, longitude, accuracy, isUserClick);
       },
       (error) => {
-        console.warn('Geolocation access error:', error.message);
+        console.warn('Geolocation access status:', error.message);
         setLocationStatus('denied');
         setIsUpdating(false);
 
         if (error.code === 1) {
-          setDenialReason("Browser location permission was blocked. Please follow the steps below to allow access.");
+          setDenialReason("Browser location permission was blocked. Please follow the steps below or use your registered state location.");
         } else if (error.code === 2) {
           setDenialReason("Your phone's GPS / Location is switched OFF in phone system settings. Please toggle it ON.");
         } else {
           setDenialReason("Location detection timed out. Please ensure GPS is active on your device.");
         }
 
-        // If user actively clicked "Enable Live Location" and it failed, direct them to phone settings modal
         if (isUserClick) {
           setShowLocationModal(true);
         }
       },
       {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 10000
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000 // Cache for 5 minutes
       }
     );
   }, [syncLocationToFirebase]);
 
-  // Initial trigger and continuous watch
+  // Check once on initial mount if not already granted
   useEffect(() => {
-    requestAndTrackLocation(false);
-
-    // Setup continuous watcher
-    let watchId: number | null = null;
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude, accuracy } = position.coords;
-          setCurrentCoords({ lat: latitude, lng: longitude, accuracy });
-          setLocationStatus('granted');
-          syncLocationToFirebase(latitude, longitude, accuracy);
-        },
-        (error) => {
-          if (error.code === error.PERMISSION_DENIED) {
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser?.liveLocation?.latitude && currentUser?.liveLocation?.longitude) {
+      setLocationStatus('granted');
+      return;
+    }
+    // Only check passively once on mount without spamming
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName })
+        .then((res) => {
+          if (res.state === 'granted') {
+            requestAndTrackLocation(false);
+          } else if (res.state === 'denied') {
             setLocationStatus('denied');
           }
-        },
-        { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 }
-      );
+        })
+        .catch(() => {
+          // Permissions API not supported or restricted, leave as prompt
+        });
     }
-
-    return () => {
-      if (watchId !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-    };
-  }, [requestAndTrackLocation, syncLocationToFirebase]);
-
-  // Periodically refresh position every 3 minutes while on web app
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (locationStatus === 'granted') {
-        requestAndTrackLocation(false);
-      }
-    }, 180000);
-    return () => clearInterval(interval);
-  }, [locationStatus, requestAndTrackLocation]);
+  }, [requestAndTrackLocation]);
 
   return (
     <>
       {/* 1. Security Warning Banner if Location is NOT granted */}
-      {locationStatus !== 'granted' && (
+      {locationStatus !== 'granted' && !isDismissed && (
         <div 
           id="security-location-warning-banner"
           className="bg-amber-600 text-white px-4 py-2.5 shadow-md flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm font-medium z-40 relative"
@@ -154,12 +175,12 @@ export default function LiveLocationWatcher() {
             <div>
               <span className="font-bold">Security Requirement: Live Location Required</span>
               <p className="text-[11px] text-amber-100 hidden sm:block">
-                To safeguard both artisans and customers during home visits and service calls, active live GPS is mandatory for emergency traceabilty.
+                To safeguard both artisans and customers during home visits and service calls, active location is required for emergency traceability.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
             <Button
               size="sm"
               onClick={() => requestAndTrackLocation(true)}
@@ -174,15 +195,32 @@ export default function LiveLocationWatcher() {
               ) : (
                 <>
                   <MapPin className="h-3.5 w-3.5 text-amber-700 mr-1.5" />
-                  Enable Live Location
+                  Enable Live GPS
                 </>
               )}
             </Button>
+
+            <Button
+              size="sm"
+              onClick={useRegisteredStateLocation}
+              className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-2.5 py-1.5 h-auto rounded-lg border border-amber-400/50"
+            >
+              Use {user?.state || 'Lagos'} Pin
+            </Button>
+
             <button
               onClick={() => setShowLocationModal(true)}
-              className="text-amber-100 hover:text-white underline text-xs"
+              className="text-amber-100 hover:text-white underline text-xs px-1"
             >
-              How to Turn On?
+              Guide
+            </button>
+
+            <button
+              onClick={() => setIsDismissed(true)}
+              className="text-amber-200 hover:text-white p-1 rounded-md"
+              title="Dismiss banner"
+            >
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -323,23 +361,31 @@ export default function LiveLocationWatcher() {
                   className="text-xs"
                   onClick={() => setShowLocationModal(false)}
                 >
-                  Dismiss for Now
+                  Dismiss
                 </Button>
 
                 <Button 
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex-1 text-xs shadow-md"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                  onClick={useRegisteredStateLocation}
+                >
+                  <MapPin className="h-3.5 w-3.5 mr-1" />
+                  Use {user?.state || 'Lagos'} Pin
+                </Button>
+
+                <Button 
+                  className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex-1 text-xs shadow-md"
                   onClick={() => requestAndTrackLocation(true)}
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
                     <>
                       <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                      Checking Phone Location...
+                      Checking Phone GPS...
                     </>
                   ) : (
                     <>
-                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                      Check & Activate Location Now
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Check Phone GPS Now
                     </>
                   )}
                 </Button>

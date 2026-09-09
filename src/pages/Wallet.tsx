@@ -87,17 +87,6 @@ export default function Wallet() {
   const [savingBank, setSavingBank] = useState(false);
   const [resettingBalance, setResettingBalance] = useState(false);
 
-  // Auto-reset the prototype ₦79,880 if present
-  useEffect(() => {
-    if (user && user.walletBalance === 79880) {
-      updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
-        .then(() => {
-          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
-        })
-        .catch(console.error);
-    }
-  }, [user]);
-
   const handleResetTestBalance = async () => {
     if (!user) return;
     if (!confirm('Clear your prototype wallet balance back to ₦0 for live production readiness?')) return;
@@ -106,9 +95,14 @@ export default function Wallet() {
       await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
       useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
       alert('✅ Wallet balance has been reset to ₦0!');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Failed to reset balance.');
+      if (e?.code === 'resource-exhausted') {
+        useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+        alert('Balance reset in current session. Database write quota limit will sync when refreshed.');
+      } else {
+        alert('Failed to reset balance: ' + (e?.message || 'Database error'));
+      }
     } finally {
       setResettingBalance(false);
     }

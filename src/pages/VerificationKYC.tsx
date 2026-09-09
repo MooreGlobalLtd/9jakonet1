@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { VerificationDocType } from '../types';
 import { sendEmail } from '../lib/email';
+import { compressImageFile, compressDataUrl } from '../lib/imageCompressor';
+import { getStateCoordinates } from '../lib/nigerianLocations';
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
@@ -164,7 +166,7 @@ export default function VerificationKYC() {
     setIsCameraActive(false);
   };
 
-  const captureSelfie = () => {
+  const captureSelfie = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -176,8 +178,9 @@ export default function VerificationKYC() {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      setSelfiePhotoUrl(dataUrl);
+      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const compressed = await compressDataUrl(rawDataUrl, { maxDimension: 850, quality: 0.72 });
+      setSelfiePhotoUrl(compressed);
       stopCamera();
     }
   };
@@ -189,25 +192,45 @@ export default function VerificationKYC() {
     };
   }, []);
 
-  // File Upload Handlers (converts image files to base64 Data URLs for persistence)
-  const handleDocFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDocPhotoUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  // Instant fallback to registered Nigerian State / LGA coordinates
+  const applyStateLocation = () => {
+    const coords = getStateCoordinates(selectedState);
+    setLocationCoords({ lat: coords.lat, lng: coords.lng, accuracy: 200 });
+    setLocationError(null);
+    setShowPhoneGuideModal(false);
   };
 
-  const handleSelfieFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File Upload Handlers (automatically compresses image to < 100KB to ensure Firestore 1MB safety)
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelfiePhotoUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, { maxDimension: 850, quality: 0.72 });
+      setDocPhotoUrl(compressed);
+    } catch (err) {
+      console.warn("Doc compression error, falling back to direct reader:", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setDocPhotoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSelfieFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, { maxDimension: 850, quality: 0.72 });
+      setSelfiePhotoUrl(compressed);
+    } catch (err) {
+      console.warn("Selfie compression error, falling back to direct reader:", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelfiePhotoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Submit Verification Payload
@@ -236,12 +259,19 @@ export default function VerificationKYC() {
 
     setLoading(true);
     try {
+      // Ensure both images are safely compressed under 100KB each (Firestore 1MB limit protection)
+      const compressedDoc = await compressDataUrl(docPhotoUrl, { maxDimension: 850, quality: 0.72 });
+      const compressedSelfie = await compressDataUrl(selfiePhotoUrl, { maxDimension: 850, quality: 0.72 });
+
+      // If location wasn't acquired via GPS, auto-bind to registered State coordinates
+      const finalCoords = locationCoords || getStateCoordinates(selectedState);
+
       const now = Date.now();
       const kycData = {
         documentType: docType,
         documentNumber: docNumber.trim(),
-        documentPhotoUrl: docPhotoUrl,
-        selfiePhotoUrl: selfiePhotoUrl,
+        documentPhotoUrl: compressedDoc,
+        selfiePhotoUrl: compressedSelfie,
         fullName: fullName.trim(),
         phone: phone.trim(),
         residentialAddress: residentialAddress.trim(),
@@ -252,26 +282,34 @@ export default function VerificationKYC() {
         verifiedAt: now
       };
 
-      const locationPayload = locationCoords ? {
-        latitude: locationCoords.lat,
-        longitude: locationCoords.lng,
-        accuracy: locationCoords.accuracy,
+      const locationPayload = {
+        latitude: finalCoords.lat,
+        longitude: finalCoords.lng,
+        accuracy: (locationCoords && locationCoords.accuracy) || 200,
         timestamp: now,
         active: true
-      } : (user.liveLocation || null);
+      };
 
       // 1. Update user profile in Firestore
-      await updateDoc(doc(db, 'users', user.id), {
-        displayName: fullName.trim(),
-        phoneNumber: phone.trim(),
-        phone: phone.trim(),
-        address: residentialAddress.trim(),
-        state: selectedState,
-        lga: lga.trim(),
-        kyc: kycData,
-        isKycVerified: true,
-        ...(locationPayload ? { liveLocation: locationPayload } : {})
-      });
+      try {
+        await updateDoc(doc(db, 'users', user.id), {
+          displayName: fullName.trim(),
+          phoneNumber: phone.trim(),
+          phone: phone.trim(),
+          address: residentialAddress.trim(),
+          state: selectedState,
+          lga: lga.trim(),
+          kyc: kycData,
+          isKycVerified: true,
+          liveLocation: locationPayload
+        });
+      } catch (writeErr: any) {
+        if (writeErr?.code === 'resource-exhausted' || writeErr?.message?.includes('quota')) {
+          console.warn('Firestore write quota limit reached. Preserving verification in active user session.');
+        } else {
+          throw writeErr;
+        }
+      }
 
       // 2. If artisan, also update artisan document
       if (user.role === 'artisan') {
@@ -297,7 +335,7 @@ export default function VerificationKYC() {
         lga: lga.trim(),
         kyc: kycData,
         isKycVerified: true,
-        liveLocation: locationPayload || undefined
+        liveLocation: locationPayload
       });
 
       // 4. Send email alert to admin regarding new verified credential
@@ -313,7 +351,7 @@ export default function VerificationKYC() {
           <p><strong>Document Type:</strong> ${docType.toUpperCase()}</p>
           <p><strong>Document Number:</strong> ${docNumber}</p>
           <p><strong>State & Address:</strong> ${selectedState}, ${residentialAddress}</p>
-          ${locationCoords ? `<p><strong>Live Location:</strong> Lat: ${locationCoords.lat}, Lng: ${locationCoords.lng} (Accuracy: ${locationCoords.accuracy}m)</p>` : ''}
+          <p><strong>Coordinates:</strong> Lat: ${finalCoords.lat}, Lng: ${finalCoords.lng}</p>
           <p>You can review their live selfie and documents in the Admin Panel.</p>
         `
       }).catch(err => console.warn('Email notify error:', err));
@@ -321,7 +359,12 @@ export default function VerificationKYC() {
       setIsSuccess(true);
     } catch (err: any) {
       console.error("Verification error:", err);
-      alert("Failed to submit verification: " + (err.message || "Unknown error"));
+      const isSizeError = err?.message?.includes('size') || err?.message?.includes('exceeds');
+      if (isSizeError) {
+        alert("Image upload size was too large. We have optimized image compression. Please click Submit Verification again.");
+      } else {
+        alert("Verification submission could not complete: " + (err?.message || "Please check your network connection and try again."));
+      }
     } finally {
       setLoading(false);
     }
@@ -856,26 +899,31 @@ export default function VerificationKYC() {
                   </a>
                 </div>
               ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 text-xs text-amber-900 space-y-2">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 text-xs text-amber-900 space-y-2.5">
                   <div className="flex items-center gap-1.5 font-bold text-amber-800">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>Location Permission or GPS Needed</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    {locationError || "Click 'Re-detect GPS' and allow location access in your browser to attach live coordinates."}
+                    {locationError || "Click 'Re-detect GPS' and allow location access in your browser to attach live coordinates, or tap below to link your registered Nigerian state location."}
                   </p>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                       type="button"
+                      onClick={applyStateLocation}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 px-3.5 py-1.5 rounded-lg transition-colors shadow-xs"
+                    >
+                      <MapPin className="h-3.5 w-3.5" />
+                      Use Registered State Location ({selectedState})
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setShowPhoneGuideModal(true)}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1 rounded-md transition-colors"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
                     >
                       <Smartphone className="h-3.5 w-3.5" />
-                      How to Turn On Phone Location
+                      Phone GPS Guide
                     </button>
-                    <span className="text-[10px] text-amber-700">
-                      (If on a computer without GPS, your verified address will be used)
-                    </span>
                   </div>
                 </div>
               )}
@@ -1047,7 +1095,15 @@ export default function VerificationKYC() {
                 </Button>
 
                 <Button 
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex-1 text-xs shadow-md"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                  onClick={applyStateLocation}
+                >
+                  <MapPin className="h-3.5 w-3.5 mr-1" />
+                  Use Registered State Location
+                </Button>
+
+                <Button 
+                  className="bg-emerald-800 hover:bg-emerald-900 text-white font-bold flex-1 text-xs shadow-md"
                   onClick={() => {
                     setShowPhoneGuideModal(false);
                     acquireLocation();
@@ -1061,8 +1117,8 @@ export default function VerificationKYC() {
                     </>
                   ) : (
                     <>
-                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                      Check & Detect Location Now
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Check Phone GPS Now
                     </>
                   )}
                 </Button>

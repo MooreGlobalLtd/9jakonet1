@@ -13,6 +13,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { getSmartBotAnswer } from '../../lib/botEngine';
 
 interface ChatMessage {
   id: string;
@@ -98,39 +99,39 @@ export default function KonetBot() {
         })
       });
 
-      const data = await res.json();
-      const botTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-      if (data.success && data.reply) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            role: 'assistant',
-            text: data.reply,
-            timestamp: botTimestamp
-          }
-        ]);
-      } else {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            role: 'assistant',
-            text: "I am ready to help with any 9jaKonet questions! You can ask about hiring verified artisans, funding Paystack escrow, the 6-digit OTP release code, or artisan wallet payouts.",
-            timestamp: botTimestamp
-          }
-        ]);
+      let replyText: string | null = null;
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.reply && typeof data.reply === 'string' && data.reply.trim()) {
+          replyText = data.reply.trim();
+        }
       }
-    } catch (err) {
-      console.error('Bot request failed:', err);
+
+      // If server returned non-200 or empty, use smart local engine
+      if (!replyText) {
+        replyText = getSmartBotAnswer(message);
+      }
+
       const botTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setMessages(prev => [
         ...prev,
         {
           id: `bot-${Date.now()}`,
           role: 'assistant',
-          text: "I am here to answer all questions regarding 9jaKonet! Feel free to ask about our verified artisans, Paystack escrow protection, job creation, or wallet withdrawals.",
+          text: replyText!,
+          timestamp: botTimestamp
+        }
+      ]);
+    } catch (err) {
+      console.warn('Bot network or parsing exception, using smart client-side knowledge engine:', err);
+      const fallbackReply = getSmartBotAnswer(message);
+      const botTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `bot-${Date.now()}`,
+          role: 'assistant',
+          text: fallbackReply,
           timestamp: botTimestamp
         }
       ]);

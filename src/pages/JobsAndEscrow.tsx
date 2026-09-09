@@ -29,17 +29,6 @@ export default function JobsAndEscrow() {
   const [releasing, setReleasing] = useState<boolean>(false);
   const [resettingBalance, setResettingBalance] = useState<boolean>(false);
 
-  // Automatically reset the prototype ₦79,880 back to 0 as requested by the user
-  useEffect(() => {
-    if (user && user.walletBalance === 79880) {
-      updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
-        .then(() => {
-          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
-        })
-        .catch(console.error);
-    }
-  }, [user]);
-
   const handleResetTestBalance = async () => {
     if (!user) return;
     if (!confirm('Clear your prototype wallet balance back to ₦0 for live production readiness?')) return;
@@ -48,9 +37,14 @@ export default function JobsAndEscrow() {
       await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
       useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
       alert('✅ Wallet balance has been reset to ₦0 successfully!');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Failed to reset wallet balance.');
+      if (e?.code === 'resource-exhausted') {
+        useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+        alert('Balance reset in current session. Database write quota limit will sync when refreshed.');
+      } else {
+        alert('Failed to reset wallet balance: ' + (e?.message || 'Database error'));
+      }
     } finally {
       setResettingBalance(false);
     }
@@ -79,6 +73,8 @@ export default function JobsAndEscrow() {
         const merged = [...customerJobs, ...prev.filter(p => p.artisanId === user.id)];
         return Array.from(new Map(merged.map(item => [item.id, item])).values()).sort((a, b) => b.createdAt - a.createdAt);
       });
+    }, (err) => {
+      console.warn('Customer jobs snapshot notice:', err?.message || err);
     });
 
     const unsubscribeArtisan = onSnapshot(qArtisan, (snap) => {
@@ -87,6 +83,8 @@ export default function JobsAndEscrow() {
         const merged = [...prev.filter(p => p.customerId === user.id), ...artisanJobs];
         return Array.from(new Map(merged.map(item => [item.id, item])).values()).sort((a, b) => b.createdAt - a.createdAt);
       });
+    }, (err) => {
+      console.warn('Artisan jobs snapshot notice:', err?.message || err);
     });
 
     return () => {

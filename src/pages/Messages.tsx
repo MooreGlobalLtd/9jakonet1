@@ -58,6 +58,8 @@ export default function Messages() {
 
       const resolvedChats = await Promise.all(chatPromises);
       setChats(resolvedChats);
+    }, (err) => {
+      console.warn('Chats listener notice:', err?.message || err);
     });
 
     return () => unsubscribe();
@@ -83,6 +85,8 @@ export default function Messages() {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
+    }, (err) => {
+      console.warn('Messages listener notice:', err?.message || err);
     });
 
     return () => unsubscribe();

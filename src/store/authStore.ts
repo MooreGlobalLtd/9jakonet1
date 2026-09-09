@@ -47,7 +47,16 @@ export const useAuthStore = create<AuthState>((set) => ({
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
-          set({ user: null });
+          // Keep user authenticated using basic Auth profile if Firestore is in quota backoff
+          const fallbackUser: User = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            displayName: firebaseUser.displayName || 'User',
+            role: 'customer',
+            createdAt: Date.now(),
+            walletBalance: 0
+          };
+          set({ user: fallbackUser });
         }
       } else {
         set({ user: null, artisanProfile: null });
