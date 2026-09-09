@@ -9,7 +9,7 @@ export default function AppLayout() {
   const { user } = useAuthStore();
   const location = useLocation();
 
-  const showKycPrompt = user && !user.isKycVerified && location.pathname !== '/verify-kyc';
+  const showKycPrompt = user && !user.isKycVerified && user?.kyc?.status !== 'verified' && user?.kyc?.status !== 'pending' && location.pathname !== '/verify-kyc';
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 font-sans">

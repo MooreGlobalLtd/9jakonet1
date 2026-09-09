@@ -60,87 +60,79 @@ export default function AdminDashboard() {
     if (newStatus === 'rejected') {
       const reason = prompt("Please enter the reason for declining this KYC (this will be shown to the user):", "Unclear document photo or mismatched selfie");
       if (reason === null) return; // Cancelled
-      rejectReason = reason;
+      if (!reason.trim()) {
+        alert("You must provide a reason for declining.");
+        return;
+      }
+      rejectReason = reason.trim();
     }
 
     try {
-      const kycUpdatePayload: any = {
-        isKycVerified: newStatus === 'verified',
-        'kyc.status': newStatus,
-        'kyc.verifiedAt': Date.now()
+      const targetUser = users.find(u => u.id === userId);
+      const existingKyc = targetUser?.kyc || {};
+      
+      const newKycData = {
+        ...existingKyc,
+        status: newStatus,
+        verifiedAt: Date.now()
       };
       
       if (newStatus === 'rejected') {
-        kycUpdatePayload['kyc.rejectReason'] = rejectReason;
+        newKycData.rejectReason = rejectReason;
+      } else {
+        newKycData.rejectReason = ''; // Clear reason if verified
       }
 
-      // Wrap with 5 second timeout so it doesn't freeze the UI if offline/hanging
-      try {
-        await withTimeout(updateDoc(doc(db, 'users', userId), kycUpdatePayload), 5000);
-      } catch (err: any) {
-        if (err.message === 'timeout') {
-          console.warn('Firestore update timed out, continuing optimistically...');
-        } else {
-          throw err;
-        }
-      }
+      const kycUpdatePayload = {
+        isKycVerified: newStatus === 'verified',
+        kyc: newKycData
+      };
+
+      // Direct Firebase update without timeout wrapper to ensure it completes or fails loudly
+      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
 
       // Also update kyc_verifications record
       try {
-        await withTimeout(updateDoc(doc(db, 'kyc_verifications', userId), {
+        await setDoc(doc(db, 'kyc_verifications', userId), {
             status: newStatus,
             verifiedAt: Date.now()
-        }), 2000);
+        }, { merge: true });
       } catch (e) {
-        // May not exist in old records or timed out
+        console.warn('KYC verifications log sync notice:', e);
       }
 
       // If this user is an artisan, synchronize their artisan verification status
       try {
-        const artisanDoc: any = await withTimeout(getDoc(doc(db, 'artisans', userId)), 3000);
-        if (artisanDoc && artisanDoc.exists && artisanDoc.exists()) {
-          await withTimeout(updateDoc(doc(db, 'artisans', userId), {
+        const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
+        if (artisanDoc && artisanDoc.exists()) {
+          await updateDoc(doc(db, 'artisans', userId), {
               verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          }), 2000);
+          });
         }
       } catch (e) {
         console.warn('Artisan sync notice:', e);
       }
 
-      const targetUser = users.find(u => u.id === userId);
       if (targetUser?.email) {
         sendEmail({
           to: targetUser.email,
           subject: newStatus === 'verified' ? 'Congratulations! Your 9jaKonet Identity is Verified' : '9jaKonet KYC Verification Update',
           html: newStatus === 'verified' 
-            ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
-            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
+            ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},}</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
+            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},}</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
         }).catch(err => console.warn('Email notice error:', err));
       }
 
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: u.kyc ? { ...u.kyc, status: newStatus, verifiedAt: Date.now(), rejectReason: rejectReason } : {
-          fullName: u.displayName || 'User',
-          idType: 'nin',
-          idNumber: 'VERIFIED',
-          documentUrl: '',
-          selfieUrl: '',
-          status: newStatus,
-          rejectReason: rejectReason,
-          submittedAt: Date.now(),
-          verifiedAt: Date.now()
-        }
-      } : u));
-
-      alert(`✅ Updated KYC verification status to "${newStatus}" for ${targetUser?.displayName || 'user'}. An email notification has been dispatched.`);
+      // Refresh data from server to ensure perfect sync
+      await fetchData();
+      
+      alert(`✅ Updated KYC verification status to "${newStatus}" for ${targetUser?.displayName || 'user'}.`);
     } catch (err: any) {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
         markQuotaExhausted();
         alert("System quota limit reached for today. KYC updates are disabled.");
       } else {
-        console.error(err);
+        console.error('Update Error:', err);
         alert('Error updating KYC status: ' + err.message);
       }
     }
