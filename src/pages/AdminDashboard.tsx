@@ -88,6 +88,13 @@ export default function AdminDashboard() {
         kyc: newKycData
       };
 
+      // Optimistic UI update for instant feedback
+      setUsers(prev => prev.map(u => u.id === userId ? {
+        ...u,
+        isKycVerified: newStatus === 'verified',
+        kyc: newKycData
+      } as any : u));
+
       // Direct Firebase update without timeout wrapper to ensure it completes or fails loudly
       await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
 
@@ -118,13 +125,13 @@ export default function AdminDashboard() {
           to: targetUser.email,
           subject: newStatus === 'verified' ? 'Congratulations! Your 9jaKonet Identity is Verified' : '9jaKonet KYC Verification Update',
           html: newStatus === 'verified' 
-            ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},}</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
-            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},}</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
+            ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
+            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
         }).catch(err => console.warn('Email notice error:', err));
       }
 
       // Refresh data from server to ensure perfect sync
-      await fetchData();
+      fetchData().catch(e => console.warn('Background fetch error:', e));
       
       alert(`✅ Updated KYC verification status to "${newStatus}" for ${targetUser?.displayName || 'user'}.`);
     } catch (err: any) {
@@ -1503,24 +1510,24 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 {!isVerified && (
-                                  <Button
-                                    size="sm"
-                                    type="button"
-                                    onClick={() => handleUpdateUserKycStatus(u.id, 'verified')}
-                                    className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                                  >
-                                    Approve KYC
-                                  </Button>
-                                )}
-                                {!isVerified && (
-                                  <Button
-                                    size="sm"
-                                    type="button"
-                                    onClick={() => handleUpdateUserKycStatus(u.id, 'rejected')}
-                                    className="h-7 text-[11px] bg-rose-600 hover:bg-rose-700 text-white font-semibold"
-                                  >
-                                    Decline KYC
-                                  </Button>
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      onClick={() => handleUpdateUserKycStatus(u.id, 'verified')}
+                                      className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                    >
+                                      Approve KYC
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      type="button"
+                                      onClick={() => handleUpdateUserKycStatus(u.id, 'rejected')}
+                                      className="h-7 text-[11px] bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                                    >
+                                      Decline KYC
+                                    </Button>
+                                  </>
                                 )}
                                 {isVerified && (
                                   <Button
