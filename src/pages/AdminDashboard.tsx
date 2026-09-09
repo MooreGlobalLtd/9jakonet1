@@ -41,6 +41,8 @@ export default function AdminDashboard() {
     totalTransactions: number;
   } | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('Save Configuration');
   const [processingWithdrawalId, setProcessingWithdrawalId] = useState<string | null>(null);
 
   // Drilldown states for interactive stat cards
@@ -523,6 +525,8 @@ export default function AdminDashboard() {
       return;
     }
 
+    setIsSavingConfig(true);
+    setSaveStatus('Saving...');
     try {
       // 1. Persist in Firestore so it's active everywhere (Vercel, custom domain, Cloud Run)
       await setDoc(doc(db, 'system_config', 'paystack'), {

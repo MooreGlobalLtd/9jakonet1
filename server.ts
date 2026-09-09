@@ -86,7 +86,7 @@ async function startServer() {
 
     try {
       const data = await resend.emails.send({
-        from: '9jaKonet <info@mooregloballtd.online>',
+        from: '9jaKonet <onboarding@resend.dev>', // Free tier default, must be onboarding@resend.dev until custom domain is verified
         to: Array.isArray(to) ? to : [to],
         subject: subject,
         html: html,
