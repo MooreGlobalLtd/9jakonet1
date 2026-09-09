@@ -1,4 +1,6 @@
-import { create } from 'zustand';
+const fs = require('fs');
+
+const code = `import { create } from 'zustand';
 import { User, ArtisanProfile } from '../types';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
@@ -93,3 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     });
   }
 }));
+`;
+
+fs.writeFileSync('src/store/authStore.ts', code);
+console.log("Updated authStore to use Firestore!");

@@ -98,6 +98,18 @@ export default function Register() {
       // 1. Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       
+      // 1.5 Create the user in Firestore database so they have a profile
+      const newUser: User = {
+        id: userCredential.user.uid,
+        email: email.trim(),
+        displayName: fullName.trim(),
+        role: role,
+        createdAt: Date.now(),
+        walletBalance: 0,
+        isKycVerified: false
+      };
+      await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
+      
       // 2. Send verification email
       await sendEmailVerification(userCredential.user);
       

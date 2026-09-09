@@ -69,7 +69,7 @@ export default function Login() {
         return;
       }
       
-      // For now: Authenticate users only, Do NOT save user profile data or read from Firestore
+      // Profile loading is handled by authStore
       navigate('/dashboard');
     } catch (error: any) {
       console.error("Login error:", error);
@@ -91,7 +91,7 @@ export default function Login() {
     try {
       await signInWithPopup(auth, googleProvider);
       
-      // For now: Authenticate users only, Do NOT save user profile data
+      // Profile loading is handled by authStore
       navigate('/dashboard');
     } catch (error: any) {
       console.error("Login error:", error);
