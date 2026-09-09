@@ -290,7 +290,7 @@ export default function Messages() {
                         addDoc(collection(db, 'chats', activeChat, 'messages'), {
                           chatId: activeChat,
                           senderId: user.id,
-                          text: `[SYSTEM] I have created a new job offer: "${title}" for ₦${amount.toLocaleString()}. I will fund the escrow now.`,
+                          text: `[SYSTEM] Job Offer Created: "${title}" for ₦${amount.toLocaleString()}. The customer is currently funding the Escrow Vault.`,
                           createdAt: Date.now()
                         });
                         
@@ -321,6 +321,19 @@ export default function Messages() {
                 ) : (
                   messages.map(msg => {
                     const isMe = msg.senderId === user.id;
+                    const isSystem = msg.text.startsWith('[SYSTEM]');
+                    
+                    if (isSystem) {
+                      const cleanText = msg.text.replace('[SYSTEM]', '').trim();
+                      return (
+                        <div key={msg.id} className="flex justify-center my-4">
+                          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-4 py-2 rounded-xl text-center shadow-sm max-w-[85%]">
+                            🤝 {cleanText}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
                     return (
                       <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isMe ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-900 rounded-bl-none shadow-sm'}`}>

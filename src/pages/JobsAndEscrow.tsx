@@ -19,7 +19,7 @@ export default function JobsAndEscrow() {
   const [jobs, setJobs] = useState<EscrowContract[]>([]);
   const [reviewForm, setReviewForm] = useState<{ [jobId: string]: { score: number, comment: string } }>({});
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>(
-    localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_live_04b9016335193910cdba3828c46002496a7ef412'
+    localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || ''
   );
 
   // OTP Release State
@@ -502,6 +502,14 @@ export default function JobsAndEscrow() {
                     )}
                     
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'pending_escrow' && (
+                      (!paystackPublicKey || paystackPublicKey.trim() === '' || !paystackPublicKey.startsWith('pk_')) ? (
+                      <Button 
+                        onClick={() => toast.error("Payment Gateway is offline. Please go to the Admin Panel and enter a valid Paystack Public Key.")}
+                        className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors"
+                      >
+                        Fund Escrow (Setup Required)
+                      </Button>
+                    ) : (
                       <PaystackButton
                         email={user.email}
                         amount={(job.amount || 0) * 100}
@@ -517,6 +525,7 @@ export default function JobsAndEscrow() {
                         onClose={() => console.log("Payment window closed.")}
                         className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"
                       />
+                    )
                     )}
                     
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'in_progress' && (
