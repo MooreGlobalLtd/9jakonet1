@@ -31,6 +31,11 @@ export default function AdminDashboard() {
   const [paystackKeyInput, setPaystackKeyInput] = useState(localStorage.getItem('paystack_public_key') || '');
   const [paystackSecretInput, setPaystackSecretInput] = useState(localStorage.getItem('paystack_secret_key') || '');
   const [paystackBalance, setPaystackBalance] = useState<string | null>(null);
+  const [balanceDetails, setBalanceDetails] = useState<{
+    transferBalance: number;
+    totalRevenue: number;
+    totalTransactions: number;
+  } | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
   const [processingWithdrawalId, setProcessingWithdrawalId] = useState<string | null>(null);
 
@@ -39,6 +44,7 @@ export default function AdminDashboard() {
 
     // 1. Load config from Firestore (works on Vercel, Cloud Run, and any custom domain)
     const loadConfig = async () => {
+      let activeSecret = localStorage.getItem('paystack_secret_key') || '';
       try {
         const snap = await getDoc(doc(db, 'system_config', 'paystack'));
         if (snap.exists()) {
@@ -50,10 +56,15 @@ export default function AdminDashboard() {
           if (cfg.secretKey) {
             setPaystackSecretInput(cfg.secretKey);
             localStorage.setItem('paystack_secret_key', cfg.secretKey);
+            activeSecret = cfg.secretKey;
           }
         }
       } catch (err) {
         console.warn('Firestore config load notice:', err);
+      }
+
+      if (activeSecret) {
+        fetchPaystackBalanceWithKey(activeSecret, true);
       }
 
       // 2. Also check server endpoint
@@ -180,7 +191,11 @@ export default function AdminDashboard() {
         alert(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
         fetchData();
       } else {
-        alert(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Transfers OTP is disabled in Paystack Dashboard (Settings > Preferences > Transfers).`);
+        if (data.error && data.error.toLowerCase().includes('starter business')) {
+          alert(`⚠️ Paystack Starter Business Limitation:\n\n${data.error}\n\nUnder Nigerian banking regulations (CBN), Paystack only allows automated API transfers for "Registered Businesses" (accounts verified with CAC registration).\n\n💡 Immediate Solution:\n1. Open your OPay / banking app and send ₦${w.amount.toLocaleString()} directly to:\n   ${recipientName}\n   ${w.bankName} - ${w.accountNumber}\n\n2. Click "Mark Paid Manually" below to instantly finalize this withdrawal and email the artisan!\n\n(To enable automated API payouts in the future, upgrade your Paystack account to a Registered Business under Settings > Compliance on Paystack).`);
+        } else {
+          alert(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Your Paystack account has Transfers enabled.`);
+        }
       }
     } catch (error: any) {
       console.error('Withdrawal transfer error:', error);
@@ -213,34 +228,49 @@ export default function AdminDashboard() {
 
   const markWithdrawalComplete = async (withdrawalId: string) => {
     try {
+      const withdrawalDoc = withdrawals.find(w => w.id === withdrawalId);
+      if (!withdrawalDoc) return;
+
+      if (!confirm(`Confirm you have sent ₦${withdrawalDoc.amount.toLocaleString()} to ${withdrawalDoc.accountName || 'the artisan'} (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber})?`)) {
+        return;
+      }
+
       await updateDoc(doc(db, 'withdrawals', withdrawalId), {
-        status: 'completed'
+        status: 'completed',
+        transferStatus: 'manual_transfer',
+        paidAt: Date.now()
+      });
+
+      // Add to transactions log
+      await addDoc(collection(db, 'transactions'), {
+        userId: withdrawalDoc.userId,
+        type: 'withdrawal_payout',
+        title: `Withdrawal to ${withdrawalDoc.bankName} (${withdrawalDoc.accountNumber})`,
+        amount: withdrawalDoc.amount,
+        status: 'completed',
+        createdAt: Date.now()
       });
       
-      // Fetch withdrawal details to get the userId
-      const withdrawalDoc = withdrawals.find(w => w.id === withdrawalId);
-      if (withdrawalDoc) {
-        const artisanDoc = await getDoc(doc(db, 'users', withdrawalDoc.userId));
-        if (artisanDoc.exists()) {
-          const artisanEmail = artisanDoc.data().email;
-          const artisanName = artisanDoc.data().displayName;
-          if (artisanEmail) {
-            sendEmail({
-              to: artisanEmail,
-              subject: 'Your Withdrawal has been Processed!',
-              html: `
-                <h2>Withdrawal Completed!</h2>
-                <p>Hi ${artisanName},</p>
-                <p>Great news! Your withdrawal request for <strong>₦${withdrawalDoc.amount.toLocaleString()}</strong> has been marked as transferred to your bank account (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber}).</p>
-                <br/>
-                <p>Thank you for using 9jaKonet.</p>
-              `
-            });
-          }
+      const artisanDoc = await getDoc(doc(db, 'users', withdrawalDoc.userId));
+      if (artisanDoc.exists()) {
+        const artisanEmail = artisanDoc.data().email;
+        const artisanName = artisanDoc.data().displayName || withdrawalDoc.accountName || 'Artisan Partner';
+        if (artisanEmail) {
+          sendEmail({
+            to: artisanEmail,
+            subject: 'Your Withdrawal has been Processed!',
+            html: `
+              <h2>Withdrawal Completed!</h2>
+              <p>Hi ${artisanName},</p>
+              <p>Great news! Your withdrawal request for <strong>₦${withdrawalDoc.amount.toLocaleString()}</strong> has been marked as transferred to your bank account (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber}).</p>
+              <br/>
+              <p>Thank you for using 9jaKonet.</p>
+            `
+          });
         }
       }
 
-      alert("Withdrawal marked as completed!");
+      alert(`✅ Withdrawal marked as completed! ₦${withdrawalDoc.amount.toLocaleString()} marked as paid and artisan notified.`);
       fetchData();
     } catch (error) {
       console.error("Failed to update withdrawal", error);
@@ -248,13 +278,11 @@ export default function AdminDashboard() {
     }
   };
 
-  const checkLiveBalance = async () => {
-    setCheckingBalance(true);
+  const fetchPaystackBalanceWithKey = async (secret: string, silent = false) => {
+    if (!silent) setCheckingBalance(true);
     try {
-      const secret = paystackSecretInput.trim() || localStorage.getItem('paystack_secret_key') || '';
       if (!secret) {
-        alert('Please enter and save your Paystack Secret Key first.');
-        setCheckingBalance(false);
+        if (!silent) alert('Please enter and save your Paystack Secret Key first.');
         return;
       }
 
@@ -264,22 +292,39 @@ export default function AdminDashboard() {
         }
       });
       const data = await res.json();
-      if (data.success && data.balances?.length) {
-        const ngn = data.balances.find((b: any) => b.currency === 'NGN');
-        if (ngn) {
-          setPaystackBalance(`₦${(ngn.balance / 100).toLocaleString()}`);
-        } else {
-          setPaystackBalance('0 NGN');
+      if (data.success) {
+        const transferBal = typeof data.transferBalance === 'number' ? data.transferBalance : 0;
+        const totalRev = typeof data.totalRevenue === 'number' ? data.totalRevenue : 0;
+        const totalTx = data.totalTransactions || 0;
+
+        setBalanceDetails({
+          transferBalance: transferBal,
+          totalRevenue: totalRev,
+          totalTransactions: totalTx
+        });
+        setPaystackBalance(`₦${transferBal.toLocaleString()}`);
+
+        if (!silent) {
+          alert(`✅ Connected to Paystack!\n\n📊 Live Account Financials:\n• Total Customer Revenue: ₦${totalRev.toLocaleString()} (Matches your Paystack Dashboard Revenue / Next Payout)\n• Available Transfer Balance: ₦${transferBal.toLocaleString()} (For automated API payouts)\n\n💡 Note: As a Starter Business, Paystack sweeps customer payments (₦${totalRev.toLocaleString()}) to your linked bank account. You can disburse artisan funds directly from your bank app and click "Mark Paid Manually"!`);
         }
       } else {
-        alert(`Paystack Response: ${data.error || 'Failed to retrieve balance. Please verify your secret key.'}`);
+        if (!silent) {
+          alert(`Paystack Response: ${data.error || 'Failed to retrieve balance. Please verify your secret key.'}`);
+        }
       }
     } catch (error: any) {
       console.error('Balance check error:', error);
-      alert('Could not connect to Paystack balance endpoint: ' + (error?.message || 'Check connection.'));
+      if (!silent) {
+        alert('Could not connect to Paystack balance endpoint: ' + (error?.message || 'Check connection.'));
+      }
     } finally {
-      setCheckingBalance(false);
+      if (!silent) setCheckingBalance(false);
     }
+  };
+
+  const checkLiveBalance = async () => {
+    const secret = paystackSecretInput.trim() || localStorage.getItem('paystack_secret_key') || '';
+    await fetchPaystackBalanceWithKey(secret, false);
   };
 
   const handleSavePaystackSettings = async () => {
@@ -511,7 +556,20 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                           <span className="text-xs text-slate-500 block">Account Number</span>
-                          <span className="font-mono font-semibold text-slate-900">{w.accountNumber}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-semibold text-slate-900">{w.accountNumber}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(w.accountNumber);
+                                alert(`Copied account number ${w.accountNumber} to clipboard!`);
+                              }}
+                              className="text-[11px] font-medium text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                              title="Copy account number"
+                            >
+                              Copy
+                            </button>
+                          </div>
                         </div>
                         {w.accountName && (
                           <div className="col-span-2">
@@ -536,19 +594,30 @@ export default function AdminDashboard() {
                 <Banknote className="h-5 w-5 text-emerald-600" />
                 Paystack Gateway Configuration (Live Payouts & Escrow)
               </CardTitle>
-              <div className="flex items-center gap-3">
-                {paystackBalance && (
-                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-sm">
-                    Paystack NGN Balance: {paystackBalance}
+              <div className="flex flex-wrap items-center gap-2">
+                {balanceDetails ? (
+                  <>
+                    <span className="px-2.5 py-1 bg-blue-100 text-blue-900 rounded-full font-semibold text-xs flex items-center gap-1 shadow-xs border border-blue-200">
+                      <span>💰 Customer Revenue:</span>
+                      <strong className="font-bold">₦{balanceDetails.totalRevenue.toLocaleString()}</strong>
+                    </span>
+                    <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 rounded-full font-semibold text-xs flex items-center gap-1 shadow-xs border border-emerald-200">
+                      <span>⚡ Transfer Wallet:</span>
+                      <strong className="font-bold">₦{balanceDetails.transferBalance.toLocaleString()}</strong>
+                    </span>
+                  </>
+                ) : paystackBalance ? (
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs">
+                    Paystack: {paystackBalance}
                   </span>
-                )}
+                ) : null}
                 <Button 
                   type="button" 
                   variant="outline" 
                   size="sm" 
-                  onClick={checkLiveBalance} 
+                  onClick={() => checkLiveBalance()} 
                   disabled={checkingBalance}
-                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
+                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-100 h-8 text-xs font-semibold cursor-pointer"
                 >
                   {checkingBalance ? 'Checking...' : 'Check Live Balance'}
                 </Button>
@@ -557,8 +626,32 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="pt-6">
             <div className="space-y-6">
+              {balanceDetails && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700">
+                  <div className="font-semibold text-slate-900 mb-2 flex items-center gap-1.5">
+                    <span>📊 Live Paystack Account Status:</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="bg-white p-3 rounded-md border border-slate-200 shadow-xs">
+                      <span className="text-slate-500 block text-[11px] font-medium">Customer Revenue (Pending Payout / Next Settlement)</span>
+                      <span className="text-lg font-bold text-blue-700">₦{balanceDetails.totalRevenue.toLocaleString()}</span>
+                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        Total payments collected from clients. Paystack schedules this to pay out directly to your settlement bank account.
+                      </p>
+                    </div>
+                    <div className="bg-white p-3 rounded-md border border-slate-200 shadow-xs">
+                      <span className="text-slate-500 block text-[11px] font-medium">Transfer Wallet (For Automated "Pay via Paystack" API)</span>
+                      <span className="text-lg font-bold text-emerald-700">₦{balanceDetails.transferBalance.toLocaleString()}</span>
+                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        Available for automated API payouts to artisans. Once your CAC is approved on Paystack, you can top up this wallet or settle directly into it.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                <strong>Important for Instant Transfers:</strong> To enable automatic bank payouts, ensure your Paystack account has sufficient balance, and that <em>Transfers OTP</em> is disabled on your Paystack Dashboard (Settings &gt; Preferences &gt; Transfers).
+                <strong>Paystack Account Type:</strong> Starter businesses collect client payments into Revenue/Next Payout and disburse to artisans via your banking app + clicking <em>Mark Paid Manually</em>. Upgrading to a CAC-Registered Business unlocks 1-click automated API transfers.
               </div>
 
               <div>

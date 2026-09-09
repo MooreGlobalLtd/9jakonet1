@@ -119,15 +119,52 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'Paystack secret key is not configured.' });
     }
     try {
-      const response = await fetch('https://api.paystack.co/balance', {
-        headers: { Authorization: `Bearer ${secretKey}` }
-      });
-      const data = await response.json();
-      if (data.status && data.data) {
-        res.json({ success: true, balances: data.data });
-      } else {
-        res.status(400).json({ success: false, error: data.message || 'Failed to fetch Paystack balance' });
+      const [balanceRes, totalsRes] = await Promise.all([
+        fetch('https://api.paystack.co/balance', {
+          headers: { Authorization: `Bearer ${secretKey}` }
+        }),
+        fetch('https://api.paystack.co/transaction/totals', {
+          headers: { Authorization: `Bearer ${secretKey}` }
+        })
+      ]);
+
+      const balanceData = await balanceRes.json();
+      let totalsData: any = null;
+      try {
+        totalsData = await totalsRes.json();
+      } catch {
+        // ignore
       }
+
+      let transferBalanceNGN = 0;
+      if (balanceData.status && Array.isArray(balanceData.data)) {
+        const ngn = balanceData.data.find((b: any) => b.currency === 'NGN');
+        if (ngn) {
+          transferBalanceNGN = Number(ngn.balance || 0) / 100;
+        }
+      }
+
+      let totalRevenueNGN = 0;
+      let totalTransactions = 0;
+      if (totalsData && totalsData.status && totalsData.data) {
+        totalTransactions = totalsData.data.total_transactions || 0;
+        if (Array.isArray(totalsData.data.total_volume_by_currency)) {
+          const ngn = totalsData.data.total_volume_by_currency.find((c: any) => c.currency === 'NGN');
+          if (ngn) {
+            totalRevenueNGN = Number(ngn.amount || 0) / 100;
+          }
+        } else if (totalsData.data.total_volume) {
+          totalRevenueNGN = Number(totalsData.data.total_volume || 0) / 100;
+        }
+      }
+
+      res.json({
+        success: true,
+        balances: balanceData.data || [],
+        transferBalance: transferBalanceNGN,
+        totalRevenue: totalRevenueNGN,
+        totalTransactions
+      });
     } catch (error) {
       console.error('Failed to fetch balance:', error);
       res.status(500).json({ success: false, error: 'Error connecting to Paystack balance API' });
