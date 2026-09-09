@@ -28,7 +28,11 @@ export default function ArtisanSetup() {
       });
       // Re-init auth store to fetch updated profile
       init();
-      navigate('/dashboard');
+      if (!user.isKycVerified) {
+        navigate('/verify-kyc');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error(error);
       alert("Failed to update profile");

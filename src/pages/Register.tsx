@@ -63,7 +63,7 @@ export default function Register() {
             totalJobsDone: 0,
             priceRange: ''
           });
-          navigate('/verify-kyc');
+          navigate('/artisan-setup');
           return;
         }
 
@@ -109,6 +109,16 @@ export default function Register() {
             >
               I am an Artisan
             </button>
+          </div>
+
+          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-3.5 text-xs text-teal-900 flex items-start gap-2.5">
+            <span className="text-base leading-none mt-0.5">🛡️</span>
+            <div>
+              <p className="font-bold text-teal-950">Mandatory Security &amp; GPS Policy</p>
+              <p className="text-[11px] text-teal-800 mt-0.5 leading-relaxed">
+                For community safety, all users (Artisans &amp; Customers) must verify their identity with a valid Nigerian document (NIN, Driver&apos;s License, or Voter&apos;s Card), capture a live selfie, and maintain active live GPS location while using 9jaKonet.
+              </p>
+            </div>
           </div>
 
           <Button 

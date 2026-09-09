@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { MapPin, AlertTriangle, ShieldCheck, RefreshCw, ExternalLink } from 'lucide-react';
+import { MapPin, AlertTriangle, ShieldCheck, RefreshCw, Smartphone, Check, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export default function LiveLocationWatcher() {
@@ -11,7 +11,21 @@ export default function LiveLocationWatcher() {
   const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [phoneOsTab, setPhoneOsTab] = useState<'android' | 'ios'>('android');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [denialReason, setDenialReason] = useState<string | null>(null);
+
+  // Auto-detect Android vs iOS on mount
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent || '';
+      if (/iPhone|iPad|iPod/i.test(ua)) {
+        setPhoneOsTab('ios');
+      } else {
+        setPhoneOsTab('android');
+      }
+    }
+  }, []);
 
   const syncLocationToFirebase = useCallback(async (lat: number, lng: number, accuracy?: number) => {
     if (!user) return;
@@ -40,13 +54,15 @@ export default function LiveLocationWatcher() {
     }
   }, [user, setUser]);
 
-  const requestAndTrackLocation = useCallback(() => {
+  const requestAndTrackLocation = useCallback((isUserClick = false) => {
     if (!navigator.geolocation) {
       setLocationStatus('unsupported');
+      if (isUserClick) setShowLocationModal(true);
       return;
     }
 
     setIsUpdating(true);
+    setDenialReason(null);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -54,16 +70,30 @@ export default function LiveLocationWatcher() {
         setCurrentCoords({ lat: latitude, lng: longitude, accuracy });
         setLocationStatus('granted');
         setIsUpdating(false);
+        setShowLocationModal(false);
         syncLocationToFirebase(latitude, longitude, accuracy);
       },
       (error) => {
         console.warn('Geolocation access error:', error.message);
         setLocationStatus('denied');
         setIsUpdating(false);
+
+        if (error.code === 1) {
+          setDenialReason("Browser location permission was blocked. Please follow the steps below to allow access.");
+        } else if (error.code === 2) {
+          setDenialReason("Your phone's GPS / Location is switched OFF in phone system settings. Please toggle it ON.");
+        } else {
+          setDenialReason("Location detection timed out. Please ensure GPS is active on your device.");
+        }
+
+        // If user actively clicked "Enable Live Location" and it failed, direct them to phone settings modal
+        if (isUserClick) {
+          setShowLocationModal(true);
+        }
       },
       {
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: 12000,
         maximumAge: 10000
       }
     );
@@ -71,7 +101,7 @@ export default function LiveLocationWatcher() {
 
   // Initial trigger and continuous watch
   useEffect(() => {
-    requestAndTrackLocation();
+    requestAndTrackLocation(false);
 
     // Setup continuous watcher
     let watchId: number | null = null;
@@ -103,7 +133,7 @@ export default function LiveLocationWatcher() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (locationStatus === 'granted') {
-        requestAndTrackLocation();
+        requestAndTrackLocation(false);
       }
     }, 180000);
     return () => clearInterval(interval);
@@ -132,7 +162,7 @@ export default function LiveLocationWatcher() {
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
-              onClick={requestAndTrackLocation}
+              onClick={() => requestAndTrackLocation(true)}
               disabled={isUpdating}
               className="bg-white text-amber-900 hover:bg-amber-50 font-bold px-3 py-1.5 h-auto rounded-lg shadow-sm border border-amber-200"
             >
@@ -152,7 +182,7 @@ export default function LiveLocationWatcher() {
               onClick={() => setShowLocationModal(true)}
               className="text-amber-100 hover:text-white underline text-xs"
             >
-              Why this is required?
+              How to Turn On?
             </button>
           </div>
         </div>
@@ -178,50 +208,142 @@ export default function LiveLocationWatcher() {
         </div>
       )}
 
-      {/* 3. Explainer Modal */}
+      {/* 3. Interactive Phone Location Toggle & Guidance Modal */}
       {showLocationModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-lg">Why Live Location is Required</h3>
-                <p className="text-xs text-slate-500">Safety & Security Verification on 9jaKonet</p>
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-5">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base sm:text-lg">Turn On Location On Your Phone</h3>
+                  <p className="text-xs text-emerald-100">Quick 1-minute steps to enable GPS for 9jaKonet</p>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <p>
-                <strong>Customer & Artisan Protection:</strong> Whenever an artisan is dispatched to a customer's residence or workplace, safety is 9jaKonet's highest priority.
-              </p>
-              <p>
-                By keeping live location enabled:
-              </p>
-              <ul className="list-disc pl-4 space-y-1">
-                <li>Both parties are verified to be at the authorized job location.</li>
-                <li>In the event of an emergency, dispute, or incident, our administration can trace exact timestamps and coordinates.</li>
-                <li>Your data is encrypted and strictly used for service verification and user protection.</li>
-              </ul>
-            </div>
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {denialReason && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Status:</span> {denialReason}
+                  </div>
+                </div>
+              )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setShowLocationModal(false)}
-              >
-                Close
-              </Button>
-              <Button 
-                className="bg-emerald-700 hover:bg-emerald-800 text-white"
-                onClick={() => {
-                  setShowLocationModal(false);
-                  requestAndTrackLocation();
-                }}
-              >
-                Allow & Enable Location
-              </Button>
+              {/* OS Tabs: Android vs iPhone */}
+              <div className="flex border-b border-slate-200">
+                <button
+                  onClick={() => setPhoneOsTab('android')}
+                  className={`flex-1 py-2 text-xs font-bold border-b-2 text-center transition-colors ${
+                    phoneOsTab === 'android'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  📱 Android Phone (Samsung, Tecno, etc.)
+                </button>
+                <button
+                  onClick={() => setPhoneOsTab('ios')}
+                  className={`flex-1 py-2 text-xs font-bold border-b-2 text-center transition-colors ${
+                    phoneOsTab === 'ios'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  🍎 iPhone (Apple Safari)
+                </button>
+              </div>
+
+              {/* Step instructions */}
+              {phoneOsTab === 'android' ? (
+                <div className="space-y-3 text-xs text-slate-700">
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">1</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Swipe Down Quick Settings:</strong>
+                      <span>Swipe down from the very top of your phone screen to open your quick toggle menu.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">2</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Turn ON Location (GPS):</strong>
+                      <span>Tap the <strong>Location / GPS (📍)</strong> icon so it highlights (turns blue/active).</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">3</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Allow in Chrome / Browser:</strong>
+                      <span>Tap the <strong>Lock (🔒) or Settings icon</strong> in your browser address bar beside the website URL ➜ Tap <strong>Permissions / Site Settings</strong> ➜ Tap <strong>Location</strong> ➜ Select <strong>Allow</strong>.</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 text-xs text-slate-700">
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">1</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Turn on iPhone Location Services:</strong>
+                      <span>Open iPhone <strong>Settings</strong> ➜ Scroll down to <strong>Privacy & Security</strong> ➜ Tap <strong>Location Services</strong> ➜ Switch to <strong>ON</strong>.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">2</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Allow in Safari:</strong>
+                      <span>In Safari, tap the <strong>aA</strong> icon on the left of your address bar ➜ Tap <strong>Website Settings</strong> ➜ Tap <strong>Location</strong> ➜ Choose <strong>Allow</strong>.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200 text-xs space-y-2">
+                <div className="flex items-center gap-2 text-emerald-900 font-bold">
+                  <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                  <span>Why this is required on 9jaKonet</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Active location provides emergency safety traceability for clients and artisans whenever dispatching to physical home or office addresses. Your location is encrypted and secure.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                <Button 
+                  variant="outline" 
+                  className="text-xs"
+                  onClick={() => setShowLocationModal(false)}
+                >
+                  Dismiss for Now
+                </Button>
+
+                <Button 
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex-1 text-xs shadow-md"
+                  onClick={() => requestAndTrackLocation(true)}
+                  disabled={isUpdating}
+                >
+                  {isUpdating ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Checking Phone Location...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                      Check & Activate Location Now
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

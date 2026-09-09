@@ -18,7 +18,8 @@ import {
   FileText,
   Clock,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 import { VerificationDocType } from '../types';
 import { sendEmail } from '../lib/email';
@@ -59,6 +60,20 @@ export default function VerificationKYC() {
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [showPhoneGuideModal, setShowPhoneGuideModal] = useState(false);
+  const [phoneGuideTab, setPhoneGuideTab] = useState<'android' | 'ios'>('android');
+
+  // Auto-detect OS
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent || '';
+      if (/iPhone|iPad|iPod/i.test(ua)) {
+        setPhoneGuideTab('ios');
+      } else {
+        setPhoneGuideTab('android');
+      }
+    }
+  }, []);
 
   // Flow states
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -102,10 +117,16 @@ export default function VerificationKYC() {
       },
       (err) => {
         console.warn("Location error:", err);
-        setLocationError("Please enable location permissions in your browser so we can verify your active location.");
+        if (err.code === 1) {
+          setLocationError("Location permission is currently blocked in your browser. Tap 'How to Turn On Phone GPS' below to enable.");
+        } else if (err.code === 2) {
+          setLocationError("Your device GPS / Location is switched OFF in phone settings. Swipe down quick settings to turn it ON.");
+        } else {
+          setLocationError("GPS detection timed out. Please ensure GPS is active and tap 'Re-detect GPS'.");
+        }
         setIsGettingLocation(false);
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 12000 }
     );
   };
 
@@ -835,14 +856,27 @@ export default function VerificationKYC() {
                   </a>
                 </div>
               ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 space-y-1">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 text-xs text-amber-900 space-y-2">
                   <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>Location Permission Needed</span>
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>Location Permission or GPS Needed</span>
                   </div>
-                  <p className="text-[11px]">
-                    {locationError || "Click 'Detect GPS' and allow location access in your browser to complete verification."}
+                  <p className="text-[11px] leading-relaxed">
+                    {locationError || "Click 'Re-detect GPS' and allow location access in your browser to attach live coordinates."}
                   </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPhoneGuideModal(true)}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1 rounded-md transition-colors"
+                    >
+                      <Smartphone className="h-3.5 w-3.5" />
+                      How to Turn On Phone Location
+                    </button>
+                    <span className="text-[10px] text-amber-700">
+                      (If on a computer without GPS, your verified address will be used)
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -913,6 +947,129 @@ export default function VerificationKYC() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Phone Location Toggle Modal */}
+      {showPhoneGuideModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-5">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base sm:text-lg">How to Turn On Phone Location</h3>
+                  <p className="text-xs text-emerald-100">Step-by-step for Android and iPhone</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="flex border-b border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setPhoneGuideTab('android')}
+                  className={`flex-1 py-2 text-xs font-bold border-b-2 text-center transition-colors ${
+                    phoneGuideTab === 'android'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  📱 Android Phone (Chrome, Samsung)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhoneGuideTab('ios')}
+                  className={`flex-1 py-2 text-xs font-bold border-b-2 text-center transition-colors ${
+                    phoneGuideTab === 'ios'
+                      ? 'border-emerald-600 text-emerald-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  🍎 iPhone (Apple Safari)
+                </button>
+              </div>
+
+              {phoneGuideTab === 'android' ? (
+                <div className="space-y-3 text-xs text-slate-700">
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">1</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Swipe Down Quick Settings:</strong>
+                      <span>Swipe down from the top of your phone screen to open quick toggles.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">2</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Turn ON Location (GPS):</strong>
+                      <span>Tap the <strong>Location / GPS (📍)</strong> icon so it highlights (turns blue/active).</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">3</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Allow in Chrome / Browser:</strong>
+                      <span>Tap the <strong>Lock (🔒) or Settings icon</strong> in your browser address bar beside the web URL ➜ Tap <strong>Permissions / Site Settings</strong> ➜ Tap <strong>Location</strong> ➜ Select <strong>Allow</strong>.</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 text-xs text-slate-700">
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">1</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Turn on iPhone Location Services:</strong>
+                      <span>Open iPhone <strong>Settings</strong> ➜ Scroll down to <strong>Privacy & Security</strong> ➜ Tap <strong>Location Services</strong> ➜ Switch to <strong>ON</strong>.</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="h-6 w-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0">2</span>
+                    <div>
+                      <strong className="text-slate-900 block font-semibold">Allow in Safari:</strong>
+                      <span>In Safari, tap the <strong>aA</strong> icon on the left of your address bar ➜ Tap <strong>Website Settings</strong> ➜ Tap <strong>Location</strong> ➜ Choose <strong>Allow</strong>.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                <Button 
+                  variant="outline" 
+                  className="text-xs"
+                  onClick={() => setShowPhoneGuideModal(false)}
+                >
+                  Close Guide
+                </Button>
+
+                <Button 
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex-1 text-xs shadow-md"
+                  onClick={() => {
+                    setShowPhoneGuideModal(false);
+                    acquireLocation();
+                  }}
+                  disabled={isGettingLocation}
+                >
+                  {isGettingLocation ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Checking Phone Location...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                      Check & Detect Location Now
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

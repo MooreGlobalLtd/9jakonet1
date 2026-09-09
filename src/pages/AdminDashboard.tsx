@@ -5,7 +5,7 @@ import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 
@@ -41,11 +41,40 @@ export default function AdminDashboard() {
   const [processingWithdrawalId, setProcessingWithdrawalId] = useState<string | null>(null);
 
   // Drilldown states for interactive stat cards
-  const [activeDetailView, setActiveDetailView] = useState<'revenue' | 'users' | 'verified_artisans' | 'customers' | 'pending_verifications' | 'none'>('none');
+  const [activeDetailView, setActiveDetailView] = useState<'revenue' | 'users' | 'verified_artisans' | 'customers' | 'pending_verifications' | 'kyc_security' | 'none'>('none');
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'customer' | 'artisan' | 'admin'>('all');
   const [revenueSearchTerm, setRevenueSearchTerm] = useState('');
   const [resettingBalances, setResettingBalances] = useState(false);
+  const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
+
+  const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        isKycVerified: newStatus === 'verified',
+        'kyc.status': newStatus,
+        'kyc.verifiedAt': Date.now()
+      });
+      setUsers(prev => prev.map(u => u.id === userId ? {
+        ...u,
+        isKycVerified: newStatus === 'verified',
+        kyc: u.kyc ? { ...u.kyc, status: newStatus, verifiedAt: Date.now() } : {
+          fullName: u.displayName || 'User',
+          idType: 'nin',
+          idNumber: 'VERIFIED',
+          documentUrl: '',
+          selfieUrl: '',
+          status: newStatus,
+          submittedAt: Date.now(),
+          verifiedAt: Date.now()
+        }
+      } : u));
+      alert(`✅ Updated KYC verification status to "${newStatus}" for this user.`);
+    } catch (err: any) {
+      console.error(err);
+      alert('Error updating KYC status: ' + err.message);
+    }
+  };
 
   const handleResetSingleUserBalance = async (targetUser: User) => {
     if (!confirm(`Reset ${targetUser.displayName || targetUser.email}'s test wallet balance from ₦${(targetUser.walletBalance || 0).toLocaleString()} to ₦0?`)) return;
@@ -423,6 +452,8 @@ export default function AdminDashboard() {
   const pendingArtisans = artisans.filter(a => a.verificationStatus === 'pending');
   const customersCount = users.filter(u => u.role === 'customer').length;
   const verifiedArtisansCount = artisans.filter(a => a.verificationStatus === 'verified').length;
+  const kycVerifiedUsersCount = users.filter(u => u.isKycVerified || u.kyc?.status === 'verified').length;
+  const liveTrackedUsersCount = users.filter(u => u.liveLocation?.active).length;
   
   // Calculate Platform Revenue (10% of completed jobs)
   const completedJobs = jobs.filter(j => j.status === 'completed');
@@ -477,7 +508,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Cards - Interactive Click to Drill Down */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
         {/* Total Revenue Card */}
         <Card 
           onClick={() => setActiveDetailView(activeDetailView === 'revenue' ? 'none' : 'revenue')}
@@ -605,14 +636,42 @@ export default function AdminDashboard() {
                 <Clock className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending Trades</p>
                 <h3 className="text-2xl font-black text-slate-900 tracking-tight">{pendingArtisans.length}</h3>
               </div>
             </div>
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-              <span className="text-slate-500">Awaiting approval</span>
+              <span className="text-slate-500">Awaiting trade approval</span>
               <span className={`font-semibold flex items-center gap-0.5 ${activeDetailView === 'pending_verifications' ? 'text-amber-600' : 'text-slate-400'}`}>
                 {activeDetailView === 'pending_verifications' ? 'Active Breakdown' : 'Review →'}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Security & KYC Traceability Card */}
+        <Card 
+          onClick={() => setActiveDetailView(activeDetailView === 'kyc_security' ? 'none' : 'kyc_security')}
+          className={`cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border ${
+            activeDetailView === 'kyc_security' 
+              ? 'ring-4 ring-teal-500/40 border-teal-500 bg-teal-50/40' 
+              : 'hover:border-teal-300'
+          }`}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg bg-teal-100 p-2.5 text-teal-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Security &amp; GPS</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">{kycVerifiedUsersCount}/{users.length}</h3>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-teal-700 font-semibold">{liveTrackedUsersCount} Live Active</span>
+              <span className={`font-semibold flex items-center gap-0.5 ${activeDetailView === 'kyc_security' ? 'text-teal-700' : 'text-slate-400'}`}>
+                {activeDetailView === 'kyc_security' ? 'Active Breakdown' : 'Audit Registry →'}
               </span>
             </div>
           </CardContent>
@@ -631,6 +690,7 @@ export default function AdminDashboard() {
                   {activeDetailView === 'verified_artisans' && <CheckCircle className="h-5 w-5 text-emerald-600" />}
                   {activeDetailView === 'customers' && <Users className="h-5 w-5 text-purple-600" />}
                   {activeDetailView === 'pending_verifications' && <Clock className="h-5 w-5 text-amber-600" />}
+                  {activeDetailView === 'kyc_security' && <ShieldCheck className="h-5 w-5 text-teal-600" />}
                 </span>
                 <div>
                   <CardTitle className="text-lg font-bold text-slate-900">
@@ -638,7 +698,8 @@ export default function AdminDashboard() {
                     {activeDetailView === 'users' && `Total Users Directory (${users.length})`}
                     {activeDetailView === 'verified_artisans' && `Verified Professional Artisans (${verifiedArtisansCount})`}
                     {activeDetailView === 'customers' && `Registered Customers (${customersCount})`}
-                    {activeDetailView === 'pending_verifications' && `Pending Artisan Applications (${pendingArtisans.length})`}
+                    {activeDetailView === 'pending_verifications' && `Pending Artisan Trade Applications (${pendingArtisans.length})`}
+                    {activeDetailView === 'kyc_security' && `Security & KYC Verification Registry (${kycVerifiedUsersCount}/${users.length} Verified)`}
                   </CardTitle>
                   <p className="text-xs text-slate-500">
                     {activeDetailView === 'revenue' && 'Complete audit log of 10% platform commission with exact dates, times, and artisan details.'}
@@ -646,6 +707,7 @@ export default function AdminDashboard() {
                     {activeDetailView === 'verified_artisans' && 'Directory of all vetted artisans approved to accept jobs.'}
                     {activeDetailView === 'customers' && 'Directory of all registered clients hiring artisans.'}
                     {activeDetailView === 'pending_verifications' && 'Review and approve artisan identity credentials.'}
+                    {activeDetailView === 'kyc_security' && 'Inspect NIN / Nigerian documents, view live selfies, and trace real-time GPS locations for verified customer & artisan safety.'}
                   </p>
                 </div>
               </div>
@@ -696,6 +758,15 @@ export default function AdminDashboard() {
                   }`}
                 >
                   Pending ({pendingArtisans.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailView('kyc_security')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                    activeDetailView === 'kyc_security' ? 'bg-teal-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Security &amp; GPS ({kycVerifiedUsersCount}/{users.length})
                 </button>
                 <button
                   type="button"
@@ -1082,6 +1153,244 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
+
+            {/* 6. SECURITY, KYC & GPS LIVE TRACEABILITY DRILLDOWN */}
+            {activeDetailView === 'kyc_security' && (
+              <div className="space-y-4">
+                {/* Information Banner */}
+                <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-4 text-xs text-teal-900 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldAlert className="h-5 w-5 text-teal-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-sm text-teal-950">Mandatory Public Safety &amp; Emergency Traceability Registry</h4>
+                      <p className="text-teal-800 mt-0.5">
+                        In full compliance with safety protocols, all Nigerian Artisans and Customers verify with government-approved identity documents (NIN, Voter&apos;s Card, Driver&apos;s License, Passport) and live camera selfies. Real-time GPS coordinates are continuously logged during platform usage so that client home visits remain completely safe, accountable, and verifiable.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="bg-white px-3 py-1.5 rounded-lg border border-teal-200 font-semibold text-teal-900 shadow-xs">
+                      {kycVerifiedUsersCount} / {users.length} Verified
+                    </span>
+                    <span className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold shadow-xs flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-300 animate-ping" />
+                      {liveTrackedUsersCount} Live Active
+                    </span>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs text-slate-600">
+                    <thead className="bg-slate-50 text-slate-900 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3">User &amp; Role</th>
+                        <th className="px-4 py-3">KYC Status</th>
+                        <th className="px-4 py-3">Document Record</th>
+                        <th className="px-4 py-3">Document Photo</th>
+                        <th className="px-4 py-3">Live Selfie</th>
+                        <th className="px-4 py-3">Live GPS Location</th>
+                        <th className="px-4 py-3 text-right">Verification Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {users.map((u) => {
+                        const isVerified = u.isKycVerified || u.kyc?.status === 'verified';
+                        const isPending = u.kyc?.status === 'pending';
+                        const isRejected = u.kyc?.status === 'rejected';
+                        const hasLoc = u.liveLocation?.latitude && u.liveLocation?.longitude;
+
+                        return (
+                          <tr key={u.id} className="hover:bg-slate-50/60">
+                            {/* User & Role */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0 overflow-hidden">
+                                  {u.avatar ? (
+                                    <img src={u.avatar} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    u.displayName ? u.displayName.charAt(0).toUpperCase() : u.email.charAt(0).toUpperCase()
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                    {u.displayName || 'Unnamed User'}
+                                    <span className={`inline-block px-1.5 py-0.2 text-[10px] rounded font-semibold capitalize ${
+                                      u.role === 'artisan' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                                    }`}>
+                                      {u.role}
+                                    </span>
+                                  </p>
+                                  <p className="text-[11px] text-slate-400">{u.email}</p>
+                                  {u.phoneNumber && <p className="text-[10px] text-slate-500 font-mono">{u.phoneNumber}</p>}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* KYC Status */}
+                            <td className="px-4 py-3">
+                              {isVerified ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                                  Verified
+                                </span>
+                              ) : isPending ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  <Clock className="h-3.5 w-3.5 text-amber-600" />
+                                  Pending Review
+                                </span>
+                              ) : isRejected ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800 border border-red-300">
+                                  <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+                                  Rejected
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                  Not Submitted
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Document Record */}
+                            <td className="px-4 py-3">
+                              {u.kyc ? (
+                                <div>
+                                  <span className="font-semibold text-slate-900 uppercase text-[11px] block">
+                                    {(u.kyc.documentType || u.kyc.idType || 'Document').replace('_', ' ')}
+                                  </span>
+                                  <span className="font-mono text-slate-700 text-xs block">
+                                    {u.kyc.documentNumber || u.kyc.idNumber || '—'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 block truncate max-w-[140px]">
+                                    {u.kyc.fullName}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-xs">—</span>
+                              )}
+                            </td>
+
+                            {/* Document Photo */}
+                            <td className="px-4 py-3">
+                              {u.kyc && (u.kyc.documentPhotoUrl || u.kyc.documentUrl) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const imgUrl = (u.kyc!.documentPhotoUrl || u.kyc!.documentUrl)!;
+                                    setPreviewModal({
+                                      title: `${u.displayName || 'User'} - ${(u.kyc?.documentType || u.kyc?.idType || 'Document').toUpperCase()}`,
+                                      image: imgUrl,
+                                      details: `ID Number: ${u.kyc?.documentNumber || u.kyc?.idNumber || 'N/A'} • Name: ${u.kyc?.fullName || u.displayName}`
+                                    });
+                                  }}
+                                  className="group relative inline-flex items-center gap-1.5 p-1 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+                                  title="Click to inspect document"
+                                >
+                                  <img src={u.kyc.documentPhotoUrl || u.kyc.documentUrl} alt="Doc" className="w-10 h-7 object-cover rounded bg-slate-100" />
+                                  <span className="text-[11px] font-semibold text-slate-700 group-hover:text-emerald-700 flex items-center gap-0.5">
+                                    <Eye className="h-3 w-3" /> View
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-xs">No image</span>
+                              )}
+                            </td>
+
+                            {/* Live Selfie */}
+                            <td className="px-4 py-3">
+                              {u.kyc && (u.kyc.selfiePhotoUrl || u.kyc.selfieUrl) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const selfieImg = (u.kyc!.selfiePhotoUrl || u.kyc!.selfieUrl)!;
+                                    setPreviewModal({
+                                      title: `${u.displayName || 'User'} - Live Camera Selfie`,
+                                      image: selfieImg,
+                                      details: `Biometric camera selfie recorded for safety and field visit verification.`
+                                    });
+                                  }}
+                                  className="group relative inline-flex items-center gap-1.5 p-1 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+                                  title="Click to inspect selfie"
+                                >
+                                  <img src={u.kyc.selfiePhotoUrl || u.kyc.selfieUrl} alt="Selfie" className="w-8 h-8 object-cover rounded-full bg-slate-100" />
+                                  <span className="text-[11px] font-semibold text-slate-700 group-hover:text-emerald-700 flex items-center gap-0.5">
+                                    <Eye className="h-3 w-3" /> Selfie
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-xs">No selfie</span>
+                              )}
+                            </td>
+
+                            {/* Live GPS Location */}
+                            <td className="px-4 py-3">
+                              {hasLoc ? (
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    {u.liveLocation!.active ? (
+                                      <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                      </span>
+                                    ) : (
+                                      <span className="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
+                                    )}
+                                    <span className="font-mono text-xs font-semibold text-slate-800">
+                                      {u.liveLocation!.latitude.toFixed(4)}, {u.liveLocation!.longitude.toFixed(4)}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                    <span>Acc: ±{Math.round(u.liveLocation!.accuracy || 0)}m</span>
+                                    <span>•</span>
+                                    <span>{formatDateTime(u.liveLocation!.timestamp || u.liveLocation!.updatedAt || Date.now())}</span>
+                                  </div>
+                                  <a
+                                    href={`https://www.google.com/maps?q=${u.liveLocation!.latitude},${u.liveLocation!.longitude}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline mt-1"
+                                  >
+                                    <Navigation className="h-3 w-3" /> Trace on Google Maps →
+                                  </a>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">Location inactive</span>
+                              )}
+                            </td>
+
+                            {/* Verification Actions */}
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {!isVerified ? (
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => handleUpdateUserKycStatus(u.id, 'verified')}
+                                    className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                  >
+                                    Approve KYC
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    type="button"
+                                    onClick={() => handleUpdateUserKycStatus(u.id, 'rejected')}
+                                    className="h-7 text-[11px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                  >
+                                    Revoke
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1322,6 +1631,67 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* KYC Document & Selfie Inspection Modal */}
+      {previewModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setPreviewModal(null)}
+        >
+          <div 
+            className="relative max-w-2xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                {previewModal.title}
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setPreviewModal(null)} 
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 flex flex-col items-center bg-slate-900/5">
+              <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-inner">
+                <img 
+                  src={previewModal.image} 
+                  alt={previewModal.title} 
+                  className="max-h-[60vh] w-auto max-w-full object-contain rounded-lg" 
+                />
+              </div>
+              {previewModal.details && (
+                <p className="text-xs text-slate-600 font-medium mt-3 text-center">
+                  {previewModal.details}
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <a 
+                href={previewModal.image} 
+                target="_blank" 
+                rel="noreferrer" 
+                download
+                className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
+              >
+                Open Full Original Image →
+              </a>
+              <Button 
+                type="button" 
+                size="sm" 
+                onClick={() => setPreviewModal(null)}
+              >
+                Close Preview
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

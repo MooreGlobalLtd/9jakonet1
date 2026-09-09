@@ -3,18 +3,22 @@ export type UserRole = 'customer' | 'artisan' | 'admin';
 export type VerificationDocType = 'nin' | 'voters_card' | 'drivers_license' | 'international_passport';
 
 export interface UserKyc {
-  documentType: VerificationDocType;
-  documentNumber: string;
+  documentType?: VerificationDocType | string;
+  idType?: string;
+  documentNumber?: string;
+  idNumber?: string;
   documentPhotoUrl?: string;
+  documentUrl?: string;
   selfiePhotoUrl?: string;
+  selfieUrl?: string;
   fullName: string;
-  phone: string;
-  residentialAddress: string;
-  state: string;
+  phone?: string;
+  residentialAddress?: string;
+  state?: string;
   lga?: string;
-  status: 'unverified' | 'pending' | 'verified' | 'rejected';
-  submittedAt?: number;
-  verifiedAt?: number;
+  status: 'unverified' | 'pending' | 'verified' | 'rejected' | string;
+  submittedAt?: number | any;
+  verifiedAt?: number | any;
   rejectionReason?: string;
 }
 
@@ -22,7 +26,8 @@ export interface LiveLocation {
   latitude: number;
   longitude: number;
   accuracy?: number;
-  timestamp: number;
+  timestamp?: number;
+  updatedAt?: any;
   address?: string;
   active: boolean;
 }

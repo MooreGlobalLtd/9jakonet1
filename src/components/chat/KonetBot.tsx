@@ -31,9 +31,10 @@ const INITIAL_MESSAGE: ChatMessage = {
 const SUGGESTED_QUESTIONS = [
   "How does Paystack Escrow work?",
   "How do I hire a verified artisan?",
-  "What is the 10% platform fee?",
-  "How do artisans withdraw their earnings?",
+  "What documents do I need for KYC?",
+  "How do I turn on location on my phone?",
   "How does the 6-digit OTP release work?",
+  "How do artisans withdraw to Nigerian bank?",
   "What if I'm not satisfied with the job?"
 ];
 
