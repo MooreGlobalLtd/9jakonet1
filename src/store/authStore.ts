@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { User, ArtisanProfile } from '../types';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 
 interface AuthState {
   user: User | null;
@@ -15,6 +15,9 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
+let userUnsubscribe: (() => void) | null = null;
+let artisanUnsubscribe: (() => void) | null = null;
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   artisanProfile: null,
@@ -23,31 +26,35 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user }),
   setArtisanProfile: (profile) => set({ artisanProfile: profile }),
   signOut: async () => {
+    if (userUnsubscribe) { userUnsubscribe(); userUnsubscribe = null; }
+    if (artisanUnsubscribe) { artisanUnsubscribe(); artisanUnsubscribe = null; }
     await firebaseSignOut(auth);
     set({ user: null, artisanProfile: null });
   },
   init: () => {
     onAuthStateChanged(auth, async (firebaseUser) => {
+      if (userUnsubscribe) { userUnsubscribe(); userUnsubscribe = null; }
+      if (artisanUnsubscribe) { artisanUnsubscribe(); artisanUnsubscribe = null; }
+
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        userUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), (userDoc) => {
           if (userDoc.exists()) {
             const userData = { id: userDoc.id, ...userDoc.data() } as User;
             set({ user: userData });
-
-            if (userData.role === 'artisan') {
-              const artisanDoc = await getDoc(doc(db, 'artisans', firebaseUser.uid));
-              if (artisanDoc.exists()) {
-                set({ artisanProfile: artisanDoc.data() as ArtisanProfile });
-              }
+            set({ loading: false, initialized: true });
+            
+            if (userData.role === 'artisan' && !artisanUnsubscribe) {
+              artisanUnsubscribe = onSnapshot(doc(db, 'artisans', firebaseUser.uid), (artisanDoc) => {
+                if (artisanDoc.exists()) {
+                  set({ artisanProfile: artisanDoc.data() as ArtisanProfile });
+                }
+              }, (err) => console.warn("Artisan profile listener error", err));
             }
           } else {
-            // User logged in but no profile (might be midway through signup)
-            set({ user: null }); 
+            set({ user: null, loading: false, initialized: true });
           }
-        } catch (error) {
+        }, (error) => {
           console.error("Error fetching user data:", error);
-          // Keep user authenticated using basic Auth profile if Firestore is in quota backoff
           const fallbackUser: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email || '',
@@ -56,12 +63,11 @@ export const useAuthStore = create<AuthState>((set) => ({
             createdAt: Date.now(),
             walletBalance: 0
           };
-          set({ user: fallbackUser });
-        }
+          set({ user: fallbackUser, loading: false, initialized: true });
+        });
       } else {
-        set({ user: null, artisanProfile: null });
+        set({ user: null, artisanProfile: null, loading: false, initialized: true });
       }
-      set({ loading: false, initialized: true });
     });
   }
 }));

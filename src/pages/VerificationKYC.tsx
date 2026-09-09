@@ -82,6 +82,7 @@ export default function VerificationKYC() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Initialize existing KYC if any
   useEffect(() => {
@@ -419,7 +420,7 @@ export default function VerificationKYC() {
     );
   }
 
-  if (user?.kyc?.status === 'rejected' && !isSuccess) {
+  if (user?.kyc?.status === 'rejected' && !isSuccess && !isRetrying) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-12">
         <Card className="text-center p-8 border-2 border-rose-500 shadow-xl bg-gradient-to-b from-white to-rose-50/40">
@@ -435,7 +436,7 @@ export default function VerificationKYC() {
           </CardDescription>
           <Button 
             className="bg-rose-700 hover:bg-rose-800 text-white font-semibold mt-6"
-            onClick={() => setUser({ ...user, kyc: { ...user.kyc, status: undefined } } as any)}
+            onClick={() => setIsRetrying(true)}
           >
             Re-submit KYC Verification <ArrowRight className="h-4 w-4 ml-1.5" />
           </Button>
