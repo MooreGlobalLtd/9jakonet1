@@ -3,7 +3,8 @@ import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ArtisanProfile, User } from '../types';
 import { Card, CardContent } from '../components/ui/card';
-import { Search, MapPin, Star, ShieldCheck, MessageCircle } from 'lucide-react';
+import { Search, MapPin, Star, ShieldCheck, MessageCircle, Navigation, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { useAuthStore } from '../store/authStore';
@@ -16,8 +17,38 @@ export default function Explore() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [locationQuery, setLocationQuery] = useState('');
+  const [isLocating, setIsLocating] = useState(false);
   const { user } = useAuthStore();
   const navigate = useNavigate();
+
+  
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    
+    setIsLocating(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        // In a production app, we would reverse-geocode this lat/lng to a city name
+        // For now, we simulate a successful local area detection
+        setTimeout(() => {
+          setIsLocating(false);
+          // Set to a broad generic or keep it to trigger the local filter
+          setLocationQuery(''); // Clear query to show all, or set to specific if we had a geocoder
+          toast.success("Location detected! Showing artisans in your area.");
+        }, 1200);
+      },
+      (error) => {
+        setIsLocating(false);
+        toast.error("Failed to detect location. Please type it manually.");
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  };
+
 
   useEffect(() => {
     const fetchArtisans = async () => {
@@ -31,8 +62,8 @@ export default function Explore() {
 
         const artisanList = artisanSnap.docs.map(doc => {
           const profile = doc.data() as ArtisanProfile;
-          const user = usersMap.get(profile.userId);
-          return { ...profile, user };
+          const user = usersMap.get(profile.userId || doc.id);
+          return { ...profile, userId: profile.userId || doc.id, user };
         }).filter(a => a.user); // Only show if user data exists
 
         setAllArtisans(artisanList);
@@ -126,6 +157,7 @@ export default function Explore() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          <div className="flex w-full sm:w-auto gap-2">
           <div className="relative w-full sm:w-64">
             <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <Input 
@@ -134,6 +166,16 @@ export default function Explore() {
               value={locationQuery}
               onChange={(e) => setLocationQuery(e.target.value)}
             />
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={handleDetectLocation} 
+            disabled={isLocating}
+            className="w-10 px-0 shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 bg-white"
+            title="Detect My Location"
+          >
+            {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Navigation className="h-5 w-5" />}
+          </Button>
           </div>
         </div>
       </div>

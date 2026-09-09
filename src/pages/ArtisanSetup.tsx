@@ -26,6 +26,7 @@ export default function ArtisanSetup() {
       if (!isQuotaExhausted()) {
         try {
           await setDoc(doc(db, 'artisans', user.id), {
+            userId: user.id,
             tradeCategory: trade,
             yearsExp: parseInt(exp),
             serviceAreas: [location],

@@ -149,7 +149,7 @@ export default function JobsAndEscrow() {
             html: `
               <h2>Escrow Funded Successfully!</h2>
               <p>Hi ${job.artisanName},</p>
-              <p>Great news! The escrow for your job <strong>"${job.title}"</strong> has been securely funded with <strong>₦${job.amount.toLocaleString()}</strong> by ${job.customerName}.</p>
+              <p>Great news! The escrow for your job <strong>"${job.title}"</strong> has been securely funded with <strong>₦${(job.amount || 0).toLocaleString()}</strong> by ${job.customerName}.</p>
               <p>The money is held securely in the 9jaKonet vault. You can begin the work with full confidence!</p>
               <br/>
               <p>Log in to your dashboard to view the details.</p>
@@ -158,7 +158,7 @@ export default function JobsAndEscrow() {
         }
       }
 
-      alert(`✅ Escrow funded! ₦${job.amount.toLocaleString()} is securely held in vault. ${job.artisanName} has been notified to proceed!`);
+      alert(`✅ Escrow funded! ₦${(job.amount || 0).toLocaleString()} is securely held in vault. ${job.artisanName} has been notified to proceed!`);
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
         markQuotaExhausted();
@@ -211,7 +211,7 @@ export default function JobsAndEscrow() {
                 <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #059669;">${code}</div>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                ⚠️ <strong>Security Notice:</strong> Only enter this authorization code if you are completely satisfied with the artisan's work. Once confirmed, the ₦${Math.round(job.amount * 0.9).toLocaleString()} payout will be queued for transfer to ${job.artisanName}'s bank account.
+                ⚠️ <strong>Security Notice:</strong> Only enter this authorization code if you are completely satisfied with the artisan's work. Once confirmed, the ₦${Math.round((job.amount || 0) * 0.9).toLocaleString()} payout will be queued for transfer to ${job.artisanName}'s bank account.
               </p>
             </div>
           `
@@ -486,14 +486,25 @@ export default function JobsAndEscrow() {
                   {/* Amount and Action */}
                   <div className="flex flex-col md:items-end gap-3 min-w-[180px]">
                     <div className="text-2xl font-bold text-slate-900">
-                      ₦{job.amount.toLocaleString()}
+                      ₦{(job.amount || 0).toLocaleString()}
                     </div>
                     
                     {/* Role Based Actions */}
+                    {job.status === 'open' && (
+                      <div className="flex flex-col md:items-end gap-2 min-w-[180px]">
+                        <div className="text-sm text-slate-600 font-medium bg-slate-100 px-3 py-1.5 rounded-md border border-slate-200 self-end">
+                          Looking for Artisan
+                        </div>
+                        <a href="/explore" className="text-xs text-emerald-600 hover:underline font-semibold text-right">
+                          Browse Artisans &rarr;
+                        </a>
+                      </div>
+                    )}
+                    
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'pending_escrow' && (
                       <PaystackButton
                         email={user.email}
-                        amount={job.amount * 100}
+                        amount={(job.amount || 0) * 100}
                         metadata={{
                           name: user.displayName,
                           phone: user.phone || '',
@@ -551,10 +562,10 @@ export default function JobsAndEscrow() {
                       <div className="flex flex-col gap-1 items-end">
                         <div className="text-xs text-blue-700 font-semibold bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200 flex items-center gap-1.5">
                           <ShieldCheck className="h-3.5 w-3.5" />
-                          ₦{job.amount.toLocaleString()} Secured in Escrow
+                          ₦{(job.amount || 0).toLocaleString()} Secured in Escrow
                         </div>
                         <span className="text-[11px] text-slate-500 font-medium text-right">
-                          Your net payout will be ₦{(job.amount * 0.9).toLocaleString()} upon completion
+                          Your net payout will be ₦{((job.amount || 0) * 0.9).toLocaleString()} upon completion
                         </span>
                       </div>
                     )}
@@ -662,15 +673,15 @@ export default function JobsAndEscrow() {
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Total Escrow Value:</span>
-                <span className="font-semibold text-slate-900">₦{otpModalJob.amount.toLocaleString()}</span>
+                <span className="font-semibold text-slate-900">₦{(otpModalJob.amount || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-500 text-xs">
                 <span>Platform Commission (10%):</span>
-                <span>₦{Math.round(otpModalJob.amount * 0.10).toLocaleString()}</span>
+                <span>₦{Math.round((otpModalJob.amount || 0) * 0.10).toLocaleString()}</span>
               </div>
               <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-emerald-700">
                 <span>Artisan Net Payout (90%):</span>
-                <span>₦{Math.round(otpModalJob.amount * 0.90).toLocaleString()}</span>
+                <span>₦{Math.round((otpModalJob.amount || 0) * 0.90).toLocaleString()}</span>
               </div>
             </div>
 
