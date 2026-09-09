@@ -24,6 +24,7 @@ import {
 import { VerificationDocType } from '../types';
 import { sendEmail } from '../lib/email';
 import { compressImageFile, compressDataUrl } from '../lib/imageCompressor';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { getStateCoordinates } from '../lib/nigerianLocations';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
@@ -257,6 +258,17 @@ export default function VerificationKYC() {
       const compressedDoc = await compressDataUrl(docPhotoUrl, { maxDimension: 850, quality: 0.72 });
       const compressedSelfie = await compressDataUrl(selfiePhotoUrl, { maxDimension: 850, quality: 0.72 });
 
+      // UPLOAD IMAGES TO CLOUDINARY INSTEAD OF FIREBASE
+      let finalDocUrl = compressedDoc;
+      let finalSelfieUrl = compressedSelfie;
+      try {
+        finalDocUrl = await uploadToCloudinary(compressedDoc);
+        finalSelfieUrl = await uploadToCloudinary(compressedSelfie);
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed, falling back to compressed base64:", uploadError);
+        // It will just fallback to the compressed base64 if Cloudinary fails for some reason
+      }
+
       // If location wasn't acquired via GPS, auto-bind to registered State coordinates
       const finalCoords = locationCoords || getStateCoordinates(selectedState);
 
@@ -264,8 +276,8 @@ export default function VerificationKYC() {
       const kycData = {
         documentType: docType,
         documentNumber: docNumber.trim(),
-        documentPhotoUrl: compressedDoc,
-        selfiePhotoUrl: compressedSelfie,
+        documentPhotoUrl: finalDocUrl,
+        selfiePhotoUrl: finalSelfieUrl,
         fullName: fullName.trim(),
         phone: phone.trim(),
         residentialAddress: residentialAddress.trim(),

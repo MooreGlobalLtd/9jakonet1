@@ -1,102 +1,40 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/pages/AdminDashboard.tsx', 'utf-8');
+let code = fs.readFileSync('src/pages/VerificationKYC.tsx', 'utf-8');
 
-const oldFuncRegex = /const handleUpdateUserKycStatus = async [\s\S]*?alert\(`✅ Updated KYC verification status[\s\S]*?\}\n  \};/m;
+// Add import for Cloudinary
+if (!code.includes("uploadToCloudinary")) {
+  code = code.replace("import { compressImageFile, compressDataUrl } from '../lib/imageCompressor';", "import { compressImageFile, compressDataUrl } from '../lib/imageCompressor';\nimport { uploadToCloudinary } from '../lib/cloudinary';");
+}
 
-const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
-    if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. KYC updates are disabled.");
-      return;
-    }
+// Replace the submit logic
+const submitLogicRegex = /const compressedDoc = await compressDataUrl\(docPhotoUrl, \{ maxDimension: 850, quality: 0\.72 \}\);\s+const compressedSelfie = await compressDataUrl\(selfiePhotoUrl, \{ maxDimension: 850, quality: 0\.72 \}\);/;
 
-    let rejectReason = '';
-    if (newStatus === 'rejected') {
-      const reason = prompt("Please enter the reason for declining this KYC (this will be shown to the user):", "Unclear document photo or mismatched selfie");
-      if (reason === null) return; // Cancelled
-      if (!reason.trim()) {
-        alert("You must provide a reason for declining.");
-        return;
-      }
-      rejectReason = reason.trim();
-    }
+const newSubmitLogic = `const compressedDoc = await compressDataUrl(docPhotoUrl, { maxDimension: 850, quality: 0.72 });
+      const compressedSelfie = await compressDataUrl(selfiePhotoUrl, { maxDimension: 850, quality: 0.72 });
 
-    try {
-      const targetUser = users.find(u => u.id === userId);
-      const existingKyc = targetUser?.kyc || {};
-      
-      // Build safe payload (no undefined values)
-      const newKycData: any = {
-        ...existingKyc,
-        status: newStatus,
-        verifiedAt: Date.now(),
-        rejectReason: newStatus === 'rejected' ? rejectReason : ''
-      };
-
-      // Strip any undefined fields from the kyc object so Firestore doesn't crash
-      Object.keys(newKycData).forEach(key => {
-        if (newKycData[key] === undefined) {
-          delete newKycData[key];
-        }
-      });
-
-      const kycUpdatePayload = {
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      };
-
-      // Direct Firebase update
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
-
-      // Also update kyc_verifications record
+      // UPLOAD IMAGES TO CLOUDINARY INSTEAD OF FIREBASE
+      let finalDocUrl = compressedDoc;
+      let finalSelfieUrl = compressedSelfie;
       try {
-        await setDoc(doc(db, 'kyc_verifications', userId), {
-            status: newStatus,
-            verifiedAt: Date.now()
-        }, { merge: true });
-      } catch (e) {
-        console.warn('KYC verifications log sync notice:', e);
-      }
+        finalDocUrl = await uploadToCloudinary(compressedDoc);
+        finalSelfieUrl = await uploadToCloudinary(compressedSelfie);
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed, falling back to compressed base64:", uploadError);
+        // It will just fallback to the compressed base64 if Cloudinary fails for some reason
+      }`;
 
-      // If this user is an artisan, synchronize their artisan verification status
-      try {
-        const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
-        if (artisanDoc && artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
-              verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
-        }
-      } catch (e) {
-        console.warn('Artisan sync notice:', e);
-      }
-
-      // We only update the local UI *after* successful Firebase write to prevent false positives
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      } as any : u));
-
-      if (targetUser?.email) {
-        sendEmail({
-          to: targetUser.email,
-          subject: newStatus === 'verified' ? 'Congratulations! Your 9jaKonet Identity is Verified' : '9jaKonet KYC Verification Update',
-          html: newStatus === 'verified' 
-            ? \`<h2>Identity Verified!</h2><p>Hi \${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>\`
-            : \`<h2>KYC Review Notice</h2><p>Hi \${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> \${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>\`
-        }).catch(err => console.warn('Email notice error:', err));
-      }
-
-      alert(\`✅ Updated KYC verification status to "\${newStatus}" for \${targetUser?.displayName || 'user'}.\`);
-    } catch (err: any) {
-      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
-        markQuotaExhausted();
-        alert("System quota limit reached for today. KYC updates are disabled.");
-      } else {
-        console.error('Update Error:', err);
-        alert('Error updating KYC status: ' + (err.message || err));
-      }
-    }
-  };`;
-
-code = code.replace(oldFuncRegex, newFunc);
-fs.writeFileSync('src/pages/AdminDashboard.tsx', code);
+if (submitLogicRegex.test(code)) {
+  code = code.replace(submitLogicRegex, newSubmitLogic);
+  
+  // Replace the data assignment
+  const dataAssignmentRegex = /documentPhotoUrl: compressedDoc,\s+selfiePhotoUrl: compressedSelfie,/;
+  const newDataAssignment = `documentPhotoUrl: finalDocUrl,
+        selfiePhotoUrl: finalSelfieUrl,`;
+  
+  code = code.replace(dataAssignmentRegex, newDataAssignment);
+  
+  fs.writeFileSync('src/pages/VerificationKYC.tsx', code);
+  console.log("Updated VerificationKYC.tsx to use Cloudinary!");
+} else {
+  console.log("Could not find submit logic to replace in KYC.");
+}

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { compressImageFile } from '../lib/imageCompressor';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 import { withTimeout } from '../lib/timeout';
@@ -78,13 +79,16 @@ export default function Profile() {
     try {
       // Compress to optimal size (< 60KB) for instant loading
       const compressed = await compressImageFile(file, { maxDimension: 400, quality: 0.8 });
-      setAvatarUrl(compressed);
+      // Upload to Cloudinary instead of storing Base64 directly!
+      const cloudinaryUrl = await uploadToCloudinary(compressed);
+      setAvatarUrl(cloudinaryUrl);
+      const finalAvatarUrl = cloudinaryUrl;
 
       // Update Firestore user document
       if (!isQuotaExhausted()) {
         try {
           await withTimeout(updateDoc(doc(db, 'users', user.id), {
-            avatar: compressed
+            avatar: finalAvatarUrl
           }), 5000);
         } catch (dbErr: any) {
           if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
