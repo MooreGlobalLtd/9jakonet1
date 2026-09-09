@@ -571,7 +571,8 @@ export default function AdminDashboard() {
     }
   };
 
-  if (user?.role !== 'admin') {
+  const isSuperAdmin = (user?.email === 'ayorindesamuel705@gmail.com' || user?.email === 'info@mooregloballtd.online');
+  if (user?.role !== 'admin' && !isSuperAdmin) {
     return (
       <div className="container mx-auto p-8 text-center text-red-600">
         You do not have permission to view this page.

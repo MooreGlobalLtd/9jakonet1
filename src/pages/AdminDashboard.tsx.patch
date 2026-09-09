@@ -1,0 +1,15 @@
+--- src/pages/AdminDashboard.tsx
++++ src/pages/AdminDashboard.tsx
+@@ -571,7 +571,11 @@
+     }
+   };
+ 
+-  if (user?.role !== 'admin') {
++  // TEMPORARY OVERRIDE: Allow ayorindesamuel705@gmail.com to bypass the admin check
++  const isSuperAdmin = user?.email === 'ayorindesamuel705@gmail.com';
++  const isAdmin = user?.role === 'admin' || isSuperAdmin;
++
++  if (!isAdmin) {
+     return (
+       <div className="container mx-auto p-8 text-center text-red-600">
+         You do not have permission to view this page.
