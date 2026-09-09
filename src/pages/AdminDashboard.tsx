@@ -54,12 +54,26 @@ export default function AdminDashboard() {
       alert("System quota limit reached for today. KYC updates are disabled.");
       return;
     }
+
+    let rejectReason = '';
+    if (newStatus === 'rejected') {
+      const reason = prompt("Please enter the reason for declining this KYC (this will be shown to the user):", "Unclear document photo or mismatched selfie");
+      if (reason === null) return; // Cancelled
+      rejectReason = reason;
+    }
+
     try {
-      await updateDoc(doc(db, 'users', userId), {
+      const kycUpdatePayload: any = {
         isKycVerified: newStatus === 'verified',
         'kyc.status': newStatus,
         'kyc.verifiedAt': Date.now()
-      });
+      };
+      
+      if (newStatus === 'rejected') {
+        kycUpdatePayload['kyc.rejectReason'] = rejectReason;
+      }
+
+      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
 
       // Also update kyc_verifications record
       try {
@@ -90,20 +104,21 @@ export default function AdminDashboard() {
           subject: newStatus === 'verified' ? 'Congratulations! Your 9jaKonet Identity is Verified' : '9jaKonet KYC Verification Update',
           html: newStatus === 'verified' 
             ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
-            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission could not be verified. Please log in to 9jaKonet and re-submit a clear document photo and live biometric camera selfie.</p>`
+            : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
         }).catch(err => console.warn('Email notice error:', err));
       }
 
       setUsers(prev => prev.map(u => u.id === userId ? {
         ...u,
         isKycVerified: newStatus === 'verified',
-        kyc: u.kyc ? { ...u.kyc, status: newStatus, verifiedAt: Date.now() } : {
+        kyc: u.kyc ? { ...u.kyc, status: newStatus, verifiedAt: Date.now(), rejectReason: rejectReason } : {
           fullName: u.displayName || 'User',
           idType: 'nin',
           idNumber: 'VERIFIED',
           documentUrl: '',
           selfieUrl: '',
           status: newStatus,
+          rejectReason: rejectReason,
           submittedAt: Date.now(),
           verifiedAt: Date.now()
         }

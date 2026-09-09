@@ -75,7 +75,7 @@ Explore verified profiles with verified green badges on the **Explore** tab!`;
   }
 
   // 7. Identity Verification (KYC) & Documents
-  if (/kyc|nin|identity|voter|driver'?s license|passport|document|how to verify|verification process|verification take|get verified|verify/.test(q)) {
+  if (/\bkyc\b|\bnin\b|identity|voter|driver'?s license|passport|document|how to verify|verification process|verification take|get verified|verify/.test(q)) {
     return `### Mandatory Identity Verification (KYC) on 9jaKonet 🛡️
 
 To guarantee 100% safety for every Nigerian home and workplace, 9jaKonet enforces mandatory verification:

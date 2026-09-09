@@ -155,7 +155,7 @@ export default function Login() {
     } catch (error: any) {
       clearTimeout(safetyTimeout);
       console.error("Login error:", error);
-      if (error?.code !== 'auth/popup-closed-by-user') {
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
         setErrorMessage("Google Sign-In failed: " + (error.message || "Please use email and password above."));
       }
       setLoading(false);

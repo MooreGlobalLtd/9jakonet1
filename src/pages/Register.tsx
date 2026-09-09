@@ -260,7 +260,7 @@ export default function Register() {
     } catch (error: any) {
       clearTimeout(safetyTimeout);
       console.error("Google signup error:", error);
-      if (error?.code !== 'auth/popup-closed-by-user') {
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
         setErrorMessage("Google Sign-In failed: " + (error.message || "Please use the email registration form above."));
       }
       setLoading(false);

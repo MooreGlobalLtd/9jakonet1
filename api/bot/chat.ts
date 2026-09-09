@@ -32,7 +32,7 @@ function getFallbackBotReply(userPrompt: string): string {
     return `### 9jaKonet Paystack Escrow Vault 🔒\nYour money is 100% safe on 9jaKonet! We eliminate fraud and "runaway artisans" using our strict Escrow system:\n\n1. **Fund the Escrow**: When you hire an artisan, your payment goes into the secure 9jaKonet Vault (powered by Paystack), NOT to the artisan's pocket.\n2. **Work Begins**: The artisan is notified that the money is secured and immediately begins the job.\n3. **Release via OTP**: Once the job is completed to your satisfaction, we send a secret 6-digit OTP to your email. You enter this code to authorize the release of funds to the artisan.\n4. **Disputes**: If the artisan does a bad job, you can open a dispute. Our management team will step in, review the evidence, and refund your wallet if necessary!`;
   }
   
-  if (/kyc|verify|nin|bvn|passport|id card|reject|pending/.test(q)) {
+  if (/\bkyc\b|\bnin\b|\bbvn\b|verify|passport|id card|reject|pending/.test(q)) {
     return `### KYC Verification 🛡️\nTo maintain a trusted platform, all Artisans MUST pass strict KYC (Know Your Customer) screening before they can accept jobs or withdraw funds.\n\n- **Requirements**: We accept standard Nigerian NIN (National Identity Number), International Passports, Voter's Cards, or Driver's Licenses.\n- **Selfie Verification**: A live, clear selfie is required to cross-match with the ID document.\n- **Processing**: Our Verification Desk manually reviews submissions. This usually takes 1-3 hours. If rejected, you will see the reason on your dashboard and can re-submit clear documents.`;
   }
   
@@ -106,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parts: [{ text: trimmedMessage }]
     });
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+    const candidateModels = ['gemini-3.1-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash'];
     let reply: string | null = null;
 
     for (const model of candidateModels) {

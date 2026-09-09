@@ -573,7 +573,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
       });
 
       // Try candidate models in order, prioritizing flash models for fast, reliable responses
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+      const candidateModels = ['gemini-3.1-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash'];
       let reply: string | null = null;
 
       for (const model of candidateModels) {

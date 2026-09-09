@@ -351,20 +351,35 @@ export default function VerificationKYC() {
         to: 'info@mooregloballtd.online',
         subject: `New KYC Verification Submitted for Manual Review: ${fullName} (${user.role})`,
         html: `
-          <h2>New Identity Verification Submitted on 9jaKonet</h2>
-          <p>A new user has submitted their documents and live camera selfie for manual review:</p>
-          <hr/>
-          <p><strong>Name:</strong> ${fullName}</p>
-          <p><strong>Role:</strong> ${user.role}</p>
-          <p><strong>Email:</strong> ${user.email}</p>
-          <p><strong>Phone:</strong> ${phone}</p>
-          <p><strong>Document Type:</strong> ${docType.toUpperCase()}</p>
-          <p><strong>Document Number:</strong> ${docNumber}</p>
-          <p><strong>State & Address:</strong> ${selectedState}, ${residentialAddress}</p>
-          <p><strong>Coordinates:</strong> Lat: ${finalCoords.lat}, Lng: ${finalCoords.lng}</p>
-          <p><strong>Submission Status:</strong> PENDING MANUAL REVIEW</p>
-          <br/>
-          <p>Please log in to the <strong>Admin Control Panel</strong> under "Users & KYC Verification" to inspect the ID document and live selfie side-by-side and approve or reject the verification.</p>
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>New Identity Verification Submitted on 9jaKonet</h2>
+            <p>A new user has submitted their documents and live camera selfie for manual review:</p>
+            <hr/>
+            <p><strong>Name:</strong> ${fullName}</p>
+            <p><strong>Role:</strong> ${user.role}</p>
+            <p><strong>Email:</strong> ${user.email}</p>
+            <p><strong>Phone:</strong> ${phone}</p>
+            <p><strong>Document Type:</strong> ${docType.toUpperCase()}</p>
+            <p><strong>Document Number:</strong> ${docNumber}</p>
+            <p><strong>State & Address:</strong> ${selectedState}, ${residentialAddress}</p>
+            <p><strong>Coordinates:</strong> Lat: ${finalCoords.lat}, Lng: ${finalCoords.lng}</p>
+            <p><strong>Submission Status:</strong> PENDING MANUAL REVIEW</p>
+            
+            <h3>Identity Documents Submitted</h3>
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+              <div>
+                <p><strong>Live Biometric Selfie:</strong></p>
+                <img src="${compressedSelfie}" alt="Selfie" style="max-width: 300px; border-radius: 8px; border: 2px solid #10b981;" />
+              </div>
+              <div>
+                <p><strong>Official Document (${docType.toUpperCase()}):</strong></p>
+                <img src="${compressedDoc}" alt="ID Document" style="max-width: 400px; border-radius: 8px; border: 2px solid #e2e8f0;" />
+              </div>
+            </div>
+
+            <br/>
+            <p>Please log in to the <strong>Admin Control Panel</strong> under "Users & KYC Verification" to formally approve or reject the verification.</p>
+          </div>
         `
       }).catch(err => console.warn('Email notify error:', err));
 
@@ -380,7 +395,56 @@ export default function VerificationKYC() {
     }
   };
 
-  if (isSuccess) {
+  if (user?.isKycVerified || user?.kyc?.status === 'verified') {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-12">
+        <Card className="text-center p-8 border-2 border-emerald-500 shadow-xl bg-gradient-to-b from-white to-emerald-50/40">
+          <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="h-10 w-10" />
+          </div>
+          <CardTitle className="text-2xl font-bold text-slate-900">
+            Identity Verified!
+          </CardTitle>
+          <CardDescription className="text-slate-600 text-sm mt-2 max-w-md mx-auto">
+            Your identity has been verified by the 9jaKonet Administration. You are fully authorized to use all platform features.
+          </CardDescription>
+          <Button 
+            className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold mt-6"
+            onClick={() => navigate('/dashboard')}
+          >
+            Go to Dashboard <ArrowRight className="h-4 w-4 ml-1.5" />
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (user?.kyc?.status === 'rejected' && !isSuccess) {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-12">
+        <Card className="text-center p-8 border-2 border-rose-500 shadow-xl bg-gradient-to-b from-white to-rose-50/40">
+          <div className="h-16 w-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-10 w-10" />
+          </div>
+          <CardTitle className="text-2xl font-bold text-slate-900">
+            Verification Declined
+          </CardTitle>
+          <CardDescription className="text-slate-600 text-sm mt-2 max-w-md mx-auto">
+            Your recent verification submission could not be approved. <br/>
+            <strong>Reason:</strong> {user.kyc.rejectReason || "The submitted documents or selfie were unclear, invalid, or mismatched."}
+          </CardDescription>
+          <Button 
+            className="bg-rose-700 hover:bg-rose-800 text-white font-semibold mt-6"
+            onClick={() => setUser({ ...user, kyc: { ...user.kyc, status: undefined } } as any)}
+          >
+            Re-submit KYC Verification <ArrowRight className="h-4 w-4 ml-1.5" />
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isSuccess || user?.kyc?.status === 'pending') {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-12">
         <Card className="text-center p-8 border-2 border-emerald-500 shadow-xl bg-gradient-to-b from-white to-emerald-50/40">

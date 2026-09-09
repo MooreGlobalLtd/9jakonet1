@@ -50,10 +50,10 @@ export async function compressDataUrl(
   } = options;
 
   return new Promise((resolve) => {
-    // 3-second safety timer so image compression can NEVER hang or block execution
+    // 15-second safety timer so image compression can NEVER hang or block execution
     const timer = setTimeout(() => {
       resolve(dataUrl);
-    }, 3000);
+    }, 15000);
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
