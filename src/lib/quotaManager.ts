@@ -66,3 +66,12 @@ export async function safeFirestoreWrite<T>(writeFn: () => Promise<T>, fallbackV
     throw err;
   }
 }
+
+/**
+ * Manually reset quota cooldown (for admin use)
+ * Call this in browser console: resetQuotaManually()
+ */
+export function resetQuotaManually() {
+  sessionStorage.removeItem(QUOTA_EXHAUSTED_KEY);
+  console.log('✅ Quota cooldown manually cleared! You can now perform KYC updates.');
+}
