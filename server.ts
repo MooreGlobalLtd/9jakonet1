@@ -54,11 +54,14 @@ function getPaystackPublicKey(): string {
 
 // Lazy initialize Resend to avoid crashing if the API key is missing
 let resendClient: Resend | null = null;
-function getResend() {
-  if (!resendClient && process.env.RESEND_API_KEY) {
-    resendClient = new Resend(process.env.RESEND_API_KEY);
+function getResend(req?: express.Request) {
+  const headerKey = req?.headers['x-resend-api-key'] as string;
+  const activeKey = (headerKey && headerKey.trim()) ? headerKey.trim() : process.env.RESEND_API_KEY;
+  
+  if (activeKey) {
+    return new Resend(activeKey);
   }
-  return resendClient;
+  return null;
 }
 
 async function startServer() {
@@ -71,7 +74,7 @@ async function startServer() {
   app.post('/api/emails/send', async (req, res) => {
     const { to, subject, html } = req.body;
     
-    const resend = getResend();
+    const resend = getResend(req);
     if (!resend) {
       console.warn('RESEND_API_KEY is not set. Simulating email send:', { to, subject });
       return res.json({ 

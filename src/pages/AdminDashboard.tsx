@@ -33,6 +33,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [paystackKeyInput, setPaystackKeyInput] = useState(localStorage.getItem('paystack_public_key') || '');
   const [paystackSecretInput, setPaystackSecretInput] = useState(localStorage.getItem('paystack_secret_key') || '');
+  const [resendKeyInput, setResendKeyInput] = useState(localStorage.getItem('resend_api_key') || '');
   const [paystackBalance, setPaystackBalance] = useState<string | null>(null);
   const [balanceDetails, setBalanceDetails] = useState<{
     transferBalance: number;
@@ -187,6 +188,11 @@ export default function AdminDashboard() {
       let activeSecret = localStorage.getItem('paystack_secret_key') || '';
       try {
         const snap = await getDoc(doc(db, 'system_config', 'paystack'));
+        const resendSnap = await getDoc(doc(db, 'system_config', 'resend'));
+        if (resendSnap.exists() && resendSnap.data().apiKey) {
+          setResendKeyInput(resendSnap.data().apiKey);
+          localStorage.setItem('resend_api_key', resendSnap.data().apiKey);
+        }
         if (snap.exists()) {
           const cfg = snap.data();
           if (cfg.publicKey) {
@@ -510,9 +516,10 @@ export default function AdminDashboard() {
   const handleSavePaystackSettings = async () => {
     const cleanPublic = paystackKeyInput.trim();
     const cleanSecret = paystackSecretInput.trim();
+    const cleanResend = resendKeyInput.trim();
 
-    if (!cleanPublic && !cleanSecret) {
-      toast.info('Please enter your Paystack keys');
+    if (!cleanPublic && !cleanSecret && !cleanResend) {
+      toast.info('Please enter your configuration keys');
       return;
     }
 
@@ -527,6 +534,14 @@ export default function AdminDashboard() {
       // 2. Persist in localStorage for instant fast retrieval
       if (cleanPublic) localStorage.setItem('paystack_public_key', cleanPublic);
       if (cleanSecret) localStorage.setItem('paystack_secret_key', cleanSecret);
+      if (cleanResend) localStorage.setItem('resend_api_key', cleanResend);
+      
+      if (cleanResend) {
+        await setDoc(doc(db, 'system_config', 'resend'), {
+          apiKey: cleanResend,
+          updatedAt: Date.now()
+        }, { merge: true });
+      }
 
       // 3. Synchronize with server endpoint
       try {

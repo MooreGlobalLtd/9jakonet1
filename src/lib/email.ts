@@ -4,6 +4,7 @@ export async function sendEmail({ to, subject, html }: { to: string | string[], 
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-resend-api-key': localStorage.getItem('resend_api_key') || '',
       },
       body: JSON.stringify({ to, subject, html }),
     });
