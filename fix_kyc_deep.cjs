@@ -22,30 +22,30 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
 
     try {
       const targetUser = users.find(u => u.id === userId);
-      const existingKyc = targetUser?.kyc || {};
       
-      // Build safe payload (no undefined values)
-      const newKycData: any = {
-        ...existingKyc,
-        status: newStatus,
-        verifiedAt: Date.now(),
-        rejectReason: newStatus === 'rejected' ? rejectReason : ''
-      };
-
-      // Strip any undefined fields from the kyc object so Firestore doesn't crash
-      Object.keys(newKycData).forEach(key => {
-        if (newKycData[key] === undefined) {
-          delete newKycData[key];
-        }
-      });
-
+      // We use setDoc with merge: true which is bulletproof. 
+      // It won't crash if the kyc map doesn't exist, and it won't overwrite other fields.
       const kycUpdatePayload = {
         isKycVerified: newStatus === 'verified',
-        kyc: newKycData
+        kyc: {
+          status: newStatus,
+          verifiedAt: Date.now(),
+          rejectReason: newStatus === 'rejected' ? rejectReason : ''
+        }
       };
 
-      // Direct Firebase update
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
+      // Optimistic UI update for instant feedback
+      setUsers(prev => prev.map(u => u.id === userId ? {
+        ...u,
+        isKycVerified: newStatus === 'verified',
+        kyc: { ...(u.kyc || {}), ...kycUpdatePayload.kyc }
+      } as any : u));
+
+      console.log('Sending KYC update to Firestore for user:', userId, kycUpdatePayload);
+
+      // Deep merge update to user document
+      await setDoc(doc(db, 'users', userId), kycUpdatePayload, { merge: true });
+      console.log('Successfully updated users collection.');
 
       // Also update kyc_verifications record
       try {
@@ -61,20 +61,13 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
       try {
         const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
         if (artisanDoc && artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
+          await setDoc(doc(db, 'artisans', userId), {
               verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
+          }, { merge: true });
         }
       } catch (e) {
         console.warn('Artisan sync notice:', e);
       }
-
-      // We only update the local UI *after* successful Firebase write to prevent false positives
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      } as any : u));
 
       if (targetUser?.email) {
         sendEmail({

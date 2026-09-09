@@ -51,7 +51,17 @@ export const useAuthStore = create<AuthState>((set) => ({
               }, (err) => console.warn("Artisan profile listener error", err));
             }
           } else {
-            set({ user: null, loading: false, initialized: true });
+            // For now: Authenticate users only, do NOT save user profile data
+            // Fallback to minimal user object to allow dashboard access
+            const fallbackUser = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              displayName: firebaseUser.displayName || 'User',
+              role: 'customer',
+              createdAt: Date.now(),
+              walletBalance: 0
+            };
+            set({ user: fallbackUser, loading: false, initialized: true });
           }
         }, (error) => {
           console.error("Error fetching user data:", error);

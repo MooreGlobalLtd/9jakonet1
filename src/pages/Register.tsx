@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { 
   createUserWithEmailAndPassword, 
   signInWithPopup,
-  updateProfile
+  updateProfile,
+  sendEmailVerification,
+  signOut as firebaseSignOut
 } from 'firebase/auth';
 import { auth, googleProvider, db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -28,6 +30,7 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState<string | null>(null);
 
   // Status & Error Messages
   const [errorMessage, setErrorMessage] = useState('');
@@ -91,89 +94,26 @@ export default function Register() {
     setErrorMessage('');
     setSuccessMessage('');
 
-    // Safety timeout to guarantee the UI never gets stuck indefinitely on "Please wait..."
-    const safetyTimeout = setTimeout(() => {
-      setLoading(false);
-      setErrorMessage('Network connection timed out. Please check your internet connection and try again.');
-    }, 15000);
-
     try {
       // 1. Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const firebaseUser = userCredential.user;
-
-      // 2. Set Firebase Auth display name
-      await updateProfile(firebaseUser, {
-        displayName: fullName.trim()
-      }).catch(err => console.warn('Could not update profile display name:', err));
-
-      const now = Date.now();
-      const userData: User = {
-        id: firebaseUser.uid,
-        email: email.trim(),
-        role: role,
-        displayName: fullName.trim(),
-        phone: phone.trim(),
-        phoneNumber: phone.trim(),
-        createdAt: now,
-        walletBalance: 0,
-        isKycVerified: false
-      };
-
-      // 3. Write profile to Firestore
-      if (!isQuotaExhausted()) {
-        try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), userData);
-
-          if (role === 'artisan') {
-            await setDoc(doc(db, 'artisans', firebaseUser.uid), {
-              userId: firebaseUser.uid,
-              tradeCategory: '',
-              yearsExp: 0,
-              bio: '',
-              serviceAreas: [],
-              verificationStatus: 'pending',
-              isAvailable: true,
-              ratingAvg: 0,
-              totalJobsDone: 0,
-              priceRange: ''
-            });
-          }
-        } catch (dbErr: any) {
-          if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
-            markQuotaExhausted();
-          }
-          console.warn('Firestore write notice (quota or delay):', dbErr);
-          // Even if Firestore write is throttled, user is created in Auth; proceed with in-memory session
-        }
-      }
-
-      // 4. Update auth store in memory
-      setUser(userData);
-      clearTimeout(safetyTimeout);
-      setSuccessMessage('Account created successfully! Redirecting...');
-
-      // 5. Route to onboarding
-      setTimeout(() => {
-        if (role === 'artisan') {
-          navigate('/artisan-setup');
-        } else {
-          navigate('/verify-kyc');
-        }
-      }, 700);
-
+      
+      // 2. Send verification email
+      await sendEmailVerification(userCredential.user);
+      
+      // 3. Do not sign them in automatically
+      await firebaseSignOut(auth);
+      
+      // 4. Show verification screen
+      setVerificationEmailSent(email.trim());
     } catch (error: any) {
-      clearTimeout(safetyTimeout);
-      console.error('Registration error:', error);
-      let msg = error?.message || 'Registration failed. Please try again.';
+      console.error("Signup error:", error);
       if (error?.code === 'auth/email-already-in-use') {
-        msg = 'This email address is already registered. Please click "Log in" below.';
-      } else if (error?.code === 'auth/weak-password') {
-        msg = 'The password is too weak. Please use at least 6 characters.';
-      } else if (error?.code === 'auth/invalid-email') {
-        msg = 'The email address is not valid.';
+        setErrorMessage("User already exists. Please sign in");
+      } else {
+        setErrorMessage(error.message || "Failed to create account");
       }
-      setErrorMessage(msg);
+    } finally {
       setLoading(false);
     }
   };
@@ -183,89 +123,42 @@ export default function Register() {
     setLoading(true);
     setErrorMessage('');
 
-    const safetyTimeout = setTimeout(() => {
-      setLoading(false);
-    }, 15000);
-
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const firebaseUser = result.user;
-      clearTimeout(safetyTimeout);
-      
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      let userDoc: any = null;
-      try {
-        userDoc = await getDoc(userDocRef);
-      } catch (e) {
-        console.warn('Could not read existing doc:', e);
-      }
-
-      if (!userDoc || !userDoc.exists()) {
-        const newUserData: User = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          role: role,
-          displayName: firebaseUser.displayName || fullName || 'User',
-          avatar: firebaseUser.photoURL || undefined,
-          createdAt: Date.now(),
-          walletBalance: 0,
-          isKycVerified: false
-        };
-
-        if (!isQuotaExhausted()) {
-          try {
-            await setDoc(userDocRef, newUserData);
-
-            if (role === 'artisan') {
-              await setDoc(doc(db, 'artisans', firebaseUser.uid), {
-                userId: firebaseUser.uid,
-                tradeCategory: '',
-                yearsExp: 0,
-                bio: '',
-                serviceAreas: [],
-                verificationStatus: 'pending',
-                isAvailable: true,
-                ratingAvg: 0,
-                totalJobsDone: 0,
-                priceRange: ''
-              });
-            }
-          } catch (dbErr: any) {
-            if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
-              markQuotaExhausted();
-            }
-            console.warn('Firestore write warning:', dbErr);
-          }
-        }
-
-        setUser(newUserData);
-
-        if (role === 'artisan') {
-          navigate('/artisan-setup');
-        } else {
-          navigate('/verify-kyc');
-        }
-        return;
-      }
-      
-      const existingData = userDoc.data();
-      setUser({ id: userDoc.id, ...existingData } as User);
-
-      if (!existingData.isKycVerified) {
-        navigate('/verify-kyc');
-        return;
-      }
-
+      await signInWithPopup(auth, googleProvider);
+      // For now: Authenticate users only, Do NOT save user profile data
       navigate('/dashboard');
     } catch (error: any) {
-      clearTimeout(safetyTimeout);
-      console.error("Google signup error:", error);
+      console.error("Google Signup error:", error);
       if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
-        setErrorMessage("Google Sign-In failed: " + (error.message || "Please use the email registration form above."));
+        setErrorMessage(error.message || "Failed to sign up with Google");
       }
+    } finally {
       setLoading(false);
     }
   };
+
+    // Verification Screen
+  if (verificationEmailSent) {
+    return (
+      <div className="flex min-h-[calc(100vh-160px)] items-center justify-center p-4 py-8 bg-slate-50/50">
+        <Card className="w-full max-w-md shadow-md border-slate-200 text-center py-10 px-6">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <Mail className="h-8 w-8" />
+          </div>
+          <CardTitle className="text-2xl font-bold text-slate-900 mb-3">Check your inbox</CardTitle>
+          <p className="text-slate-600 mb-8 text-sm leading-relaxed">
+            We have sent you a verification email to <span className="font-semibold text-slate-900">{verificationEmailSent}</span>. Please verify it and log in.
+          </p>
+          <Button 
+            onClick={() => navigate('/login')} 
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-11"
+          >
+            Log In
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-160px)] items-center justify-center p-4 py-8 bg-slate-50/50">

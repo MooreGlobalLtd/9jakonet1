@@ -22,30 +22,31 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
 
     try {
       const targetUser = users.find(u => u.id === userId);
-      const existingKyc = targetUser?.kyc || {};
       
-      // Build safe payload (no undefined values)
-      const newKycData: any = {
-        ...existingKyc,
-        status: newStatus,
-        verifiedAt: Date.now(),
-        rejectReason: newStatus === 'rejected' ? rejectReason : ''
-      };
-
-      // Strip any undefined fields from the kyc object so Firestore doesn't crash
-      Object.keys(newKycData).forEach(key => {
-        if (newKycData[key] === undefined) {
-          delete newKycData[key];
-        }
-      });
-
-      const kycUpdatePayload = {
+      const payload = {
         isKycVerified: newStatus === 'verified',
-        kyc: newKycData
+        kyc: {
+          status: newStatus,
+          verifiedAt: Date.now(),
+          rejectReason: newStatus === 'rejected' ? rejectReason : ''
+        }
       };
 
-      // Direct Firebase update
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
+      // Optimistic UI update for instant feedback
+      setUsers(prev => prev.map(u => u.id === userId ? {
+        ...u,
+        isKycVerified: newStatus === 'verified',
+        kyc: { ...(u.kyc || {}), ...payload.kyc }
+      } as any : u));
+
+      // 1. Update users collection directly
+      await setDoc(doc(db, 'users', userId), payload, { merge: true });
+
+      // 2. Double check that the db actually saved it
+      const verifyWrite = await getDoc(doc(db, 'users', userId));
+      if (!verifyWrite.exists() || verifyWrite.data()?.kyc?.status !== newStatus) {
+         throw new Error("CRITICAL: Firebase claimed the write succeeded, but reading it back returned old data! This means Firebase offline-persistence cache swallowed the write or Rules rejected it silently.");
+      }
 
       // Also update kyc_verifications record
       try {
@@ -61,20 +62,13 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
       try {
         const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
         if (artisanDoc && artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
+          await setDoc(doc(db, 'artisans', userId), {
               verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
+          }, { merge: true });
         }
       } catch (e) {
         console.warn('Artisan sync notice:', e);
       }
-
-      // We only update the local UI *after* successful Firebase write to prevent false positives
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      } as any : u));
 
       if (targetUser?.email) {
         sendEmail({
@@ -86,14 +80,17 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
         }).catch(err => console.warn('Email notice error:', err));
       }
 
-      alert(\`✅ Updated KYC verification status to "\${newStatus}" for \${targetUser?.displayName || 'user'}.\`);
+      alert(\`✅ DATABASE VERIFIED: Updated KYC verification status to "\${newStatus}" for \${targetUser?.displayName || 'user'}.\`);
     } catch (err: any) {
       if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
         markQuotaExhausted();
         alert("System quota limit reached for today. KYC updates are disabled.");
       } else {
         console.error('Update Error:', err);
-        alert('Error updating KYC status: ' + (err.message || err));
+        alert('CRITICAL DATABASE ERROR: ' + (err.message || err));
+        
+        // Revert UI since it failed
+        fetchData();
       }
     }
   };`;

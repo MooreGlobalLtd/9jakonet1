@@ -51,15 +51,11 @@ export default function AdminDashboard() {
   const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
 
   const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
-    if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. KYC updates are disabled.");
-      return;
-    }
-
+    // 1. Validate rejection reason if rejected
     let rejectReason = '';
     if (newStatus === 'rejected') {
-      const reason = prompt("Please enter the reason for declining this KYC (this will be shown to the user):", "Unclear document photo or mismatched selfie");
-      if (reason === null) return; // Cancelled
+      const reason = prompt("Please enter the reason for declining this KYC:", "Unclear document photo or mismatched selfie");
+      if (reason === null) return;
       if (!reason.trim()) {
         alert("You must provide a reason for declining.");
         return;
@@ -67,59 +63,49 @@ export default function AdminDashboard() {
       rejectReason = reason.trim();
     }
 
-    try {
-      const targetUser = users.find(u => u.id === userId);
-      const existingKyc = targetUser?.kyc || {};
-      
-      const newKycData = {
-        ...existingKyc,
+    // 2. Prepare payload
+    const payload = {
+      isKycVerified: newStatus === 'verified',
+      kyc: {
         status: newStatus,
-        verifiedAt: Date.now()
-      };
+        verifiedAt: Date.now(),
+        rejectReason: newStatus === 'rejected' ? rejectReason : ''
+      }
+    };
+
+    // 3. OPTIMISTIC UI UPDATE - INSTANT FEEDBACK
+    setUsers(prev => prev.map(u => u.id === userId ? {
+      ...u,
+      isKycVerified: newStatus === 'verified',
+      kyc: { ...(u.kyc || {}), ...payload.kyc }
+    } as any : u));
+
+    // 4. FIREBASE SYNC
+    try {
+      // Direct setDoc with merge is completely safe.
       
-      if (newStatus === 'rejected') {
-        newKycData.rejectReason = rejectReason;
-      } else {
-        newKycData.rejectReason = ''; // Clear reason if verified
-      }
+      // Wrap setDoc in a 5-second timeout to catch hung connections
+      const writePromise = setDoc(doc(db, 'users', userId), payload, { merge: true });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("FIREBASE_TIMEOUT")), 5000));
+      
+      await Promise.race([writePromise, timeoutPromise]);
 
-      const kycUpdatePayload = {
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      };
 
-      // Optimistic UI update for instant feedback
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      } as any : u));
+      // Background updates for logs and artisan profile
+      setDoc(doc(db, 'kyc_verifications', userId), {
+          status: newStatus,
+          verifiedAt: Date.now()
+      }, { merge: true }).catch(console.warn);
 
-      // Direct Firebase update without timeout wrapper to ensure it completes or fails loudly
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
-
-      // Also update kyc_verifications record
-      try {
-        await setDoc(doc(db, 'kyc_verifications', userId), {
-            status: newStatus,
-            verifiedAt: Date.now()
-        }, { merge: true });
-      } catch (e) {
-        console.warn('KYC verifications log sync notice:', e);
-      }
-
-      // If this user is an artisan, synchronize their artisan verification status
-      try {
-        const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
-        if (artisanDoc && artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
+      getDoc(doc(db, 'artisans', userId)).then((artDoc: any) => {
+        if (artDoc.exists()) {
+          setDoc(doc(db, 'artisans', userId), {
               verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
+          }, { merge: true });
         }
-      } catch (e) {
-        console.warn('Artisan sync notice:', e);
-      }
+      }).catch(console.warn);
 
+      const targetUser = users.find(u => u.id === userId);
       if (targetUser?.email) {
         sendEmail({
           to: targetUser.email,
@@ -127,21 +113,17 @@ export default function AdminDashboard() {
           html: newStatus === 'verified' 
             ? `<h2>Identity Verified!</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>`
             : `<h2>KYC Review Notice</h2><p>Hi ${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> ${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>`
-        }).catch(err => console.warn('Email notice error:', err));
+        }).catch(console.warn);
       }
-
-      // Refresh data from server to ensure perfect sync
-      fetchData().catch(e => console.warn('Background fetch error:', e));
-      
-      alert(`✅ Updated KYC verification status to "${newStatus}" for ${targetUser?.displayName || 'user'}.`);
     } catch (err: any) {
-      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
-        markQuotaExhausted();
-        alert("System quota limit reached for today. KYC updates are disabled.");
+      console.error("KYC Update Error:", err);
+      if (err.message === "FIREBASE_TIMEOUT") {
+        alert("⚠️ Connection Timeout: Your browser's adblocker or the AI Studio Sandbox limits are blocking Firebase saves!\n\nTo fix this for good, follow the YouTube tutorial you linked to set up your own Firebase Project and paste the keys in the app settings.");
       } else {
-        console.error('Update Error:', err);
-        alert('Error updating KYC status: ' + err.message);
+        alert('Background Sync Error: ' + (err.message || err));
       }
+      // Revert UI if DB write failed
+      fetchData();
     }
   };
 

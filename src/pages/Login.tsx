@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail, sendEmailVerification, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth, googleProvider, db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Button } from '../components/ui/button';
@@ -19,6 +19,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
   // Status & Feedback
   const [errorMessage, setErrorMessage] = useState('');
@@ -57,42 +58,27 @@ export default function Login() {
     }
 
     setLoading(true);
-    const safetyTimeout = setTimeout(() => {
-      setLoading(false);
-      setErrorMessage('Network timed out. Please check your internet connection and try again.');
-    }, 15000);
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-      clearTimeout(safetyTimeout);
-      const firebaseUser = userCredential.user;
-
-      // Attempt to load Firestore user data
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          const userData = { id: userDoc.id, ...userDoc.data() } as any;
-          setUser(userData);
-          if (!userData.isKycVerified) {
-            navigate('/verify-kyc');
-            return;
-          }
-        }
-      } catch (dbErr) {
-        console.warn('Firestore read error on login:', dbErr);
+      
+      // If a user logs in and their email is not verified, block access and show the verification screen.
+      if (!userCredential.user.emailVerified) {
+        await firebaseSignOut(auth);
+        setUnverifiedEmail(email.trim());
+        return;
       }
-
+      
+      // For now: Authenticate users only, Do NOT save user profile data or read from Firestore
       navigate('/dashboard');
     } catch (error: any) {
-      clearTimeout(safetyTimeout);
       console.error("Login error:", error);
-      let msg = 'Failed to log in. Please check your email and password.';
-      if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
-        msg = 'Invalid email address or password. Please verify and try again.';
-      } else if (error?.code === 'auth/too-many-requests') {
-        msg = 'Access to this account has been temporarily disabled due to many failed attempts. Please reset your password or try again later.';
+      if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-login-credentials') {
+        setErrorMessage("Email or password is incorrect");
+      } else {
+        setErrorMessage(error.message || "Email or password is incorrect");
       }
-      setErrorMessage(msg);
+    } finally {
       setLoading(false);
     }
   };
@@ -102,62 +88,17 @@ export default function Login() {
     setLoading(true);
     setErrorMessage('');
 
-    const safetyTimeout = setTimeout(() => {
-      setLoading(false);
-    }, 15000);
-
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      clearTimeout(safetyTimeout);
-      const user = result.user;
+      await signInWithPopup(auth, googleProvider);
       
-      const userDocRef = doc(db, 'users', user.uid);
-      try {
-        const userDoc = await getDoc(userDocRef);
-        if (!userDoc.exists()) {
-          const newUserData = {
-            id: user.uid,
-            email: user.email,
-            role: 'customer' as const,
-            displayName: user.displayName || 'Customer',
-            avatar: user.photoURL,
-            createdAt: Date.now(),
-            walletBalance: 0,
-            isKycVerified: false
-          };
-          
-          if (!isQuotaExhausted()) {
-            try {
-              await setDoc(userDocRef, newUserData);
-            } catch (err: any) {
-              if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
-                markQuotaExhausted();
-                console.warn('Quota limit hit, auto-registration skipped.');
-              }
-            }
-          }
-          setUser(newUserData);
-          navigate('/verify-kyc');
-          return;
-        } else {
-          const existing = userDoc.data();
-          setUser({ id: user.uid, ...existing } as any);
-          if (!existing.isKycVerified) {
-            navigate('/verify-kyc');
-            return;
-          }
-        }
-      } catch (dbErr) {
-        console.warn('Firestore doc read error:', dbErr);
-      }
-      
+      // For now: Authenticate users only, Do NOT save user profile data
       navigate('/dashboard');
     } catch (error: any) {
-      clearTimeout(safetyTimeout);
       console.error("Login error:", error);
       if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
         setErrorMessage("Google Sign-In failed: " + (error.message || "Please use email and password above."));
       }
+    } finally {
       setLoading(false);
     }
   };
@@ -173,6 +114,32 @@ export default function Login() {
       setResetStatus('Error sending reset email: ' + (err.message || 'Please check the address.'));
     }
   };
+
+    // Verification Screen
+  if (unverifiedEmail) {
+    return (
+      <div className="flex min-h-[calc(100vh-160px)] items-center justify-center p-4 py-8 bg-slate-50/50">
+        <Card className="w-full max-w-md shadow-md border-slate-200 text-center py-10 px-6">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <Mail className="h-8 w-8" />
+          </div>
+          <CardTitle className="text-2xl font-bold text-slate-900 mb-3">Verify your email</CardTitle>
+          <p className="text-slate-600 mb-8 text-sm leading-relaxed">
+            We have sent you a verification email to <span className="font-semibold text-slate-900">{unverifiedEmail}</span>. Please verify it and log in.
+          </p>
+          <Button 
+            onClick={() => {
+              setUnverifiedEmail(null);
+              setPassword('');
+            }} 
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-11"
+          >
+            Log In
+          </Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-160px)] items-center justify-center p-4 py-8 bg-slate-50/50">

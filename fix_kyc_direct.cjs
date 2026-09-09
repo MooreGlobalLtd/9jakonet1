@@ -1,14 +1,9 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/pages/AdminDashboard.tsx', 'utf-8');
 
-const oldFuncRegex = /const handleUpdateUserKycStatus = async [\s\S]*?alert\(`✅ Updated KYC verification status[\s\S]*?\}\n  \};/m;
+const oldFuncRegex = /const handleUpdateUserKycStatus = async [\s\S]*?alert\(`✅ DATABASE VERIFIED[\s\S]*?\}\n  \};/m;
 
 const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
-    if (isQuotaExhausted()) {
-      alert("System quota limit reached for today. KYC updates are disabled.");
-      return;
-    }
-
     let rejectReason = '';
     if (newStatus === 'rejected') {
       const reason = prompt("Please enter the reason for declining this KYC (this will be shown to the user):", "Unclear document photo or mismatched selfie");
@@ -22,30 +17,18 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
 
     try {
       const targetUser = users.find(u => u.id === userId);
-      const existingKyc = targetUser?.kyc || {};
       
-      // Build safe payload (no undefined values)
-      const newKycData: any = {
-        ...existingKyc,
-        status: newStatus,
-        verifiedAt: Date.now(),
-        rejectReason: newStatus === 'rejected' ? rejectReason : ''
-      };
-
-      // Strip any undefined fields from the kyc object so Firestore doesn't crash
-      Object.keys(newKycData).forEach(key => {
-        if (newKycData[key] === undefined) {
-          delete newKycData[key];
-        }
-      });
-
-      const kycUpdatePayload = {
+      const payload = {
         isKycVerified: newStatus === 'verified',
-        kyc: newKycData
+        kyc: {
+          status: newStatus,
+          verifiedAt: Date.now(),
+          rejectReason: newStatus === 'rejected' ? rejectReason : ''
+        }
       };
 
-      // Direct Firebase update
-      await updateDoc(doc(db, 'users', userId), kycUpdatePayload);
+      // 1. Update users collection directly
+      await setDoc(doc(db, 'users', userId), payload, { merge: true });
 
       // Also update kyc_verifications record
       try {
@@ -53,28 +36,17 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
             status: newStatus,
             verifiedAt: Date.now()
         }, { merge: true });
-      } catch (e) {
-        console.warn('KYC verifications log sync notice:', e);
-      }
+      } catch (e) {}
 
       // If this user is an artisan, synchronize their artisan verification status
       try {
         const artisanDoc: any = await getDoc(doc(db, 'artisans', userId));
         if (artisanDoc && artisanDoc.exists()) {
-          await updateDoc(doc(db, 'artisans', userId), {
+          await setDoc(doc(db, 'artisans', userId), {
               verificationStatus: newStatus === 'verified' ? 'verified' : 'pending'
-          });
+          }, { merge: true });
         }
-      } catch (e) {
-        console.warn('Artisan sync notice:', e);
-      }
-
-      // We only update the local UI *after* successful Firebase write to prevent false positives
-      setUsers(prev => prev.map(u => u.id === userId ? {
-        ...u,
-        isKycVerified: newStatus === 'verified',
-        kyc: newKycData
-      } as any : u));
+      } catch (e) {}
 
       if (targetUser?.email) {
         sendEmail({
@@ -83,18 +55,13 @@ const newFunc = `const handleUpdateUserKycStatus = async (userId: string, newSta
           html: newStatus === 'verified' 
             ? \`<h2>Identity Verified!</h2><p>Hi \${targetUser.displayName || 'User'},</p><p>Your identity documents and live selfie have been reviewed and approved by the 9jaKonet administration! Your account now proudly holds the official <strong>Verified Shield</strong>.</p>\`
             : \`<h2>KYC Review Notice</h2><p>Hi \${targetUser.displayName || 'User'},</p><p>Your recent verification submission was declined.</p><p><strong>Reason:</strong> \${rejectReason}</p><p>Please log in to 9jaKonet and re-submit clear documents and a live camera selfie.</p>\`
-        }).catch(err => console.warn('Email notice error:', err));
+        }).catch(e => console.log(e));
       }
 
-      alert(\`✅ Updated KYC verification status to "\${newStatus}" for \${targetUser?.displayName || 'user'}.\`);
+      alert(\`SUCCESS: Updated KYC to \${newStatus} for \${targetUser?.displayName}\`);
+      await fetchData(); // Force refresh to show DB truth
     } catch (err: any) {
-      if (err?.code === 'resource-exhausted' || err?.message?.includes('quota')) {
-        markQuotaExhausted();
-        alert("System quota limit reached for today. KYC updates are disabled.");
-      } else {
-        console.error('Update Error:', err);
-        alert('Error updating KYC status: ' + (err.message || err));
-      }
+      alert('ERROR: ' + (err.message || err));
     }
   };`;
 
