@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { toast } from 'sonner';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 export default function ArtisanSetup() {
@@ -24,11 +25,11 @@ export default function ArtisanSetup() {
     try {
       if (!isQuotaExhausted()) {
         try {
-          await updateDoc(doc(db, 'artisans', user.id), {
+          await setDoc(doc(db, 'artisans', user.id), {
             tradeCategory: trade,
             yearsExp: parseInt(exp),
             serviceAreas: [location],
-          });
+          }, { merge: true });
         } catch (error: any) {
           if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
             markQuotaExhausted();
@@ -47,7 +48,7 @@ export default function ArtisanSetup() {
       }
     } catch (error) {
       console.error(error);
-      alert("Failed to update profile");
+      toast.error("Failed to update profile");
     } finally {
       setLoading(false);
     }
