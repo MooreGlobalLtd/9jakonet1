@@ -93,6 +93,7 @@ export default function Profile() {
         displayName: displayName.trim(),
         address: address.trim(),
         phone: phone.trim(),
+        phoneNumber: phone.trim(),
         state: state
       });
       init(); // refresh auth store across app

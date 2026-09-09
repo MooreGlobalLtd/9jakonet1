@@ -1,8 +1,36 @@
 export type UserRole = 'customer' | 'artisan' | 'admin';
 
+export type VerificationDocType = 'nin' | 'voters_card' | 'drivers_license' | 'international_passport';
+
+export interface UserKyc {
+  documentType: VerificationDocType;
+  documentNumber: string;
+  documentPhotoUrl?: string;
+  selfiePhotoUrl?: string;
+  fullName: string;
+  phone: string;
+  residentialAddress: string;
+  state: string;
+  lga?: string;
+  status: 'unverified' | 'pending' | 'verified' | 'rejected';
+  submittedAt?: number;
+  verifiedAt?: number;
+  rejectionReason?: string;
+}
+
+export interface LiveLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp: number;
+  address?: string;
+  active: boolean;
+}
+
 export interface User {
   id: string;
   phone?: string;
+  phoneNumber?: string;
   email: string;
   role: UserRole;
   displayName: string;
@@ -16,6 +44,9 @@ export interface User {
   accountNumber?: string;
   accountName?: string;
   createdAt: number;
+  kyc?: UserKyc;
+  isKycVerified?: boolean;
+  liveLocation?: LiveLocation;
 }
 
 export interface ArtisanProfile {

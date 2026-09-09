@@ -63,11 +63,22 @@ export default function Register() {
             totalJobsDone: 0,
             priceRange: ''
           });
-          navigate('/artisan-setup');
+          navigate('/verify-kyc');
           return;
         }
+
+        // Customer goes to mandatory KYC verification
+        navigate('/verify-kyc');
+        return;
       }
       
+      // Existing user checks if verified
+      const existingData = userDoc.data();
+      if (!existingData.isKycVerified) {
+        navigate('/verify-kyc');
+        return;
+      }
+
       navigate('/dashboard');
     } catch (error: any) {
       console.error("Signup error:", error);

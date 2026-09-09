@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/button';
-import { Wrench, Menu, X, UserCircle } from 'lucide-react';
+import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 export default function Navbar() {
   const { user, signOut } = useAuthStore();
@@ -39,6 +39,18 @@ export default function Navbar() {
               <Link to="/wallet" className="flex items-center rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700 hover:bg-slate-200 transition-colors">
                 ₦{(user.walletBalance || 0).toLocaleString()}
               </Link>
+
+              {user.isKycVerified ? (
+                <Link to="/verify-kyc" className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full border border-emerald-300">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  Verified
+                </Link>
+              ) : (
+                <Link to="/verify-kyc" className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 hover:bg-amber-200 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-300 transition-colors">
+                  <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+                  Verify ID
+                </Link>
+              )}
 
               <Button variant="outline" onClick={signOut}>Sign Out</Button>
               <Link to="/profile">
@@ -105,6 +117,14 @@ export default function Navbar() {
               </Link>
               <Link to="/wallet" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Wallet: ₦{(user.walletBalance || 0).toLocaleString()}
+              </Link>
+              <Link to="/verify-kyc" onClick={closeMenu} className="flex items-center justify-between rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
+                <span>Identity & Location Verification</span>
+                {user.isKycVerified ? (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Verified</span>
+                ) : (
+                  <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Verify Now</span>
+                )}
               </Link>
               <Link to="/profile" onClick={closeMenu} className="flex items-center gap-3 rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 {user.avatar ? (

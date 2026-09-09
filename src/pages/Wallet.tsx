@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { db } from '../lib/firebase';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, increment } from 'firebase/firestore';
-import { Banknote, Building2, User, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Banknote, Building2, User, Clock, CheckCircle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { formatDateTime } from '../lib/utils';
 
 const NIGERIAN_BANKS = [
   "Access Bank",
@@ -84,6 +85,34 @@ export default function Wallet() {
 
   const [submitting, setSubmitting] = useState(false);
   const [savingBank, setSavingBank] = useState(false);
+  const [resettingBalance, setResettingBalance] = useState(false);
+
+  // Auto-reset the prototype ₦79,880 if present
+  useEffect(() => {
+    if (user && user.walletBalance === 79880) {
+      updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
+        .then(() => {
+          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+        })
+        .catch(console.error);
+    }
+  }, [user]);
+
+  const handleResetTestBalance = async () => {
+    if (!user) return;
+    if (!confirm('Clear your prototype wallet balance back to ₦0 for live production readiness?')) return;
+    setResettingBalance(true);
+    try {
+      await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
+      useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+      alert('✅ Wallet balance has been reset to ₦0!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to reset balance.');
+    } finally {
+      setResettingBalance(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -281,9 +310,24 @@ export default function Wallet() {
                <Banknote className="w-24 h-24" />
              </div>
              <p className="text-slate-400 font-medium mb-2">{isCustomer ? 'Active Escrow / Wallet' : 'Available Balance'}</p>
-             <h2 className="text-4xl font-bold tracking-tight mb-6">
-               ₦{(user.walletBalance || 0).toLocaleString()}
-             </h2>
+             <div className="flex items-baseline justify-between mb-4">
+               <h2 className="text-4xl font-bold tracking-tight">
+                 ₦{(user.walletBalance || 0).toLocaleString()}
+               </h2>
+             </div>
+             {(user.walletBalance || 0) > 0 && (
+               <div className="mb-4">
+                 <Button
+                   size="sm"
+                   variant="outline"
+                   onClick={handleResetTestBalance}
+                   disabled={resettingBalance}
+                   className="text-xs border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                 >
+                   Clear Test Balance to ₦0
+                 </Button>
+               </div>
+             )}
              <div className="text-sm text-emerald-400 flex items-center gap-1.5">
                <CheckCircle className="w-4 h-4" /> {isCustomer ? 'Protected by Paystack Escrow' : 'Available for withdrawal'}
              </div>
@@ -512,7 +556,9 @@ export default function Wallet() {
                   <tbody className="divide-y divide-slate-100">
                     {directPayouts.map((p) => (
                       <tr key={p.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4">{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-xs text-slate-700 whitespace-nowrap font-medium">
+                          {formatDateTime(p.createdAt)}
+                        </td>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-slate-900">{p.jobTitle || 'Escrow Job'}</p>
                           {p.totalJobAmount && (
@@ -548,7 +594,7 @@ export default function Wallet() {
               <table className="w-full text-left text-sm text-slate-600">
                 <thead className="bg-slate-50 text-slate-900 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-4 font-semibold">Date</th>
+                    <th className="px-6 py-4 font-semibold">Date & Time</th>
                     <th className="px-6 py-4 font-semibold">Amount</th>
                     <th className="px-6 py-4 font-semibold">Destination</th>
                     <th className="px-6 py-4 font-semibold">Transfer Reference</th>
@@ -558,7 +604,9 @@ export default function Wallet() {
                 <tbody className="divide-y divide-slate-100">
                   {withdrawals.map((w) => (
                     <tr key={w.id} className="hover:bg-slate-50/50">
-                      <td className="px-6 py-4">{new Date(w.createdAt).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 text-xs text-slate-700 whitespace-nowrap font-medium">
+                        {formatDateTime(w.createdAt)}
+                      </td>
                       <td className="px-6 py-4 font-medium text-slate-900">₦{w.amount.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         {w.bankName} <span className="text-slate-400">({w.accountNumber})</span>

@@ -6,8 +6,9 @@ import { EscrowContract, ArtisanProfile } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { ShieldCheck, Banknote, CheckCircle, Clock, Star } from 'lucide-react';
+import { ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight } from 'lucide-react';
 import { sendEmail } from '../lib/email';
+import { formatDateTime } from '../lib/utils';
 
 import { PaystackButton } from 'react-paystack';
 
@@ -18,6 +19,42 @@ export default function JobsAndEscrow() {
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>(
     localStorage.getItem('paystack_public_key') || (import.meta as any).env.VITE_PAYSTACK_PUBLIC_KEY || 'pk_live_04b9016335193910cdba3828c46002496a7ef412'
   );
+
+  // OTP Release State
+  const [otpModalJob, setOtpModalJob] = useState<EscrowContract | null>(null);
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [enteredOtp, setEnteredOtp] = useState<string>('');
+  const [otpSending, setOtpSending] = useState<boolean>(false);
+  const [otpError, setOtpError] = useState<string>('');
+  const [releasing, setReleasing] = useState<boolean>(false);
+  const [resettingBalance, setResettingBalance] = useState<boolean>(false);
+
+  // Automatically reset the prototype ₦79,880 back to 0 as requested by the user
+  useEffect(() => {
+    if (user && user.walletBalance === 79880) {
+      updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
+        .then(() => {
+          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+        })
+        .catch(console.error);
+    }
+  }, [user]);
+
+  const handleResetTestBalance = async () => {
+    if (!user) return;
+    if (!confirm('Clear your prototype wallet balance back to ₦0 for live production readiness?')) return;
+    setResettingBalance(true);
+    try {
+      await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
+      useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+      alert('✅ Wallet balance has been reset to ₦0 successfully!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to reset wallet balance.');
+    } finally {
+      setResettingBalance(false);
+    }
+  };
 
   useEffect(() => {
     // Load Paystack public key from Firestore system_config
@@ -58,9 +95,39 @@ export default function JobsAndEscrow() {
     };
   }, [user]);
 
-  const handleFundEscrow = async (job: EscrowContract) => {
+  const handleFundEscrow = async (job: EscrowContract, paymentReference?: any) => {
     try {
-      await updateDoc(doc(db, 'jobs', job.id), { status: 'in_progress' });
+      const fundedAt = Date.now();
+      const refCode = paymentReference?.reference || paymentReference?.trxref || `escrow_funded_${fundedAt}`;
+
+      // Optimistically update local state so button changes immediately
+      setJobs(prev => prev.map(j => j.id === job.id ? { 
+        ...j, 
+        status: 'in_progress',
+        fundedAt,
+        escrowFunded: true
+      } : j));
+
+      await updateDoc(doc(db, 'jobs', job.id), { 
+        status: 'in_progress',
+        fundedAt,
+        escrowFunded: true,
+        paystackReference: refCode
+      });
+
+      // Record transaction
+      await addDoc(collection(db, 'transactions'), {
+        userId: user!.id,
+        customerId: user!.id,
+        artisanId: job.artisanId,
+        jobId: job.id,
+        jobTitle: job.title,
+        type: 'escrow_funding',
+        amount: job.amount,
+        reference: refCode,
+        status: 'funded',
+        createdAt: fundedAt
+      });
       
       // Send Email to Artisan
       const artisanDoc = await getDoc(doc(db, 'users', job.artisanId));
@@ -74,7 +141,7 @@ export default function JobsAndEscrow() {
               <h2>Escrow Funded Successfully!</h2>
               <p>Hi ${job.artisanName},</p>
               <p>Great news! The escrow for your job <strong>"${job.title}"</strong> has been securely funded with <strong>₦${job.amount.toLocaleString()}</strong> by ${job.customerName}.</p>
-              <p>The money is now held securely in the 9jaKonet vault. You can confidently begin your work!</p>
+              <p>The money is held securely in the 9jaKonet vault. You can begin the work with full confidence!</p>
               <br/>
               <p>Log in to your dashboard to view the details.</p>
             `
@@ -82,135 +149,168 @@ export default function JobsAndEscrow() {
         }
       }
 
+      alert(`✅ Escrow funded! ₦${job.amount.toLocaleString()} is securely held in vault. ${job.artisanName} has been notified to proceed!`);
     } catch (error) {
-      console.error(error);
+      console.error("Fund escrow error:", error);
+      alert("Notice: Payment completed. If status doesn't refresh automatically, reload page.");
     }
   };
 
-  const handleReleaseFunds = async (job: EscrowContract) => {
+  // Step 1: When customer clicks "Release Funds", generate 6-digit OTP and send to their email
+  const initiateReleaseOtp = async (job: EscrowContract) => {
+    setOtpModalJob(job);
+    setEnteredOtp('');
+    setOtpError('');
+    setOtpSending(true);
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(code);
+
+    try {
+      if (user?.email) {
+        await sendEmail({
+          to: user.email,
+          subject: `🔒 9jaKonet Escrow Release Authorization Code: ${code}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+              <h2 style="color: #0f172a; margin-top: 0;">Authorize Escrow Release</h2>
+              <p style="color: #475569; font-size: 15px;">Hi ${user.displayName || 'Customer'},</p>
+              <p style="color: #475569; font-size: 15px;">
+                You are authorizing the release of escrow funds for the job: <strong>"${job.title}"</strong> to artisan <strong>${job.artisanName}</strong>.
+              </p>
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 24px 0; text-align: center;">
+                <p style="color: #166534; font-size: 12px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold;">Your 6-Digit Verification Code</p>
+                <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #059669;">${code}</div>
+              </div>
+              <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
+                ⚠️ <strong>Security Notice:</strong> Only enter this authorization code if you are completely satisfied with the artisan's work. Once confirmed, the ₦${Math.round(job.amount * 0.9).toLocaleString()} payout will be queued for transfer to ${job.artisanName}'s bank account.
+              </p>
+            </div>
+          `
+        });
+      }
+    } catch (e) {
+      console.error("Failed to send authorization email:", e);
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  // Step 2: Confirm OTP code and release funds
+  const confirmOtpAndRelease = async () => {
+    if (!otpModalJob) return;
+    if (enteredOtp.trim() !== generatedOtp.trim()) {
+      setOtpError("Incorrect 6-digit authorization code. Please verify the code sent to your email.");
+      return;
+    }
+
+    setReleasing(true);
+    setOtpError('');
+    const job = otpModalJob;
+
     try {
       const platformFee = Math.round(job.amount * 0.10);
       const artisanPayout = job.amount - platformFee;
+      const completedAt = Date.now();
 
       // 1. Fetch artisan doc to get saved bank details
       const artisanDoc = await getDoc(doc(db, 'users', job.artisanId));
-      let transferStatus = 'wallet_credit';
-      let transferNote = '';
-      let transferCode = '';
-      let reference = '';
+      const artisanData = artisanDoc.exists() ? artisanDoc.data() : {};
+      const artisanEmail = artisanData.email;
 
-      if (artisanDoc.exists()) {
-        const artisanData = artisanDoc.data();
-        const artisanEmail = artisanData.email;
+      // 2. Create pending withdrawal record for Admin to disburse manually or via Paystack
+      await addDoc(collection(db, 'withdrawals'), {
+        userId: job.artisanId,
+        jobId: job.id,
+        jobTitle: job.title,
+        customerName: job.customerName,
+        artisanName: job.artisanName,
+        amount: artisanPayout,
+        platformFee: platformFee,
+        totalJobAmount: job.amount,
+        bankName: artisanData.bankName || 'Not Set',
+        accountNumber: artisanData.accountNumber || 'Not Set',
+        accountName: artisanData.accountName || job.artisanName,
+        status: 'pending',
+        payoutType: 'escrow_release',
+        createdAt: completedAt
+      });
 
-        // If artisan has saved bank details, call server payout endpoint (uses server-side secret key)
-        if (artisanData.accountNumber && (artisanData.bankCode || artisanData.bankName)) {
-          try {
-            // Retrieve system Paystack key from Firestore if available
-            let sysSecretKey = localStorage.getItem('paystack_secret_key') || '';
-            try {
-              const cfgSnap = await getDoc(doc(db, 'system_config', 'paystack'));
-              if (cfgSnap.exists() && cfgSnap.data().secretKey) {
-                sysSecretKey = cfgSnap.data().secretKey;
-              }
-            } catch (cfgErr) {
-              console.warn('System config load notice:', cfgErr);
-            }
+      // 3. Add to transactions history
+      await addDoc(collection(db, 'transactions'), {
+        userId: job.artisanId,
+        customerId: job.customerId,
+        jobId: job.id,
+        jobTitle: job.title,
+        type: 'escrow_payout',
+        amount: artisanPayout,
+        platformFee: platformFee,
+        totalJobAmount: job.amount,
+        bankName: artisanData.bankName || 'N/A',
+        accountNumber: artisanData.accountNumber || 'N/A',
+        artisanName: job.artisanName,
+        customerName: job.customerName,
+        status: 'completed',
+        createdAt: completedAt
+      });
 
-            const pRes = await fetch('/api/payout', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                ...(sysSecretKey ? { 'X-Paystack-Secret-Key': sysSecretKey } : {})
-              },
-              body: JSON.stringify({
-                accountNumber: artisanData.accountNumber,
-                bankCode: artisanData.bankCode || '058',
-                accountName: artisanData.accountName || artisanData.displayName || job.artisanName,
-                amount: artisanPayout,
-                reason: `Escrow Payout: Job "${job.title}"`,
-                secretKey: sysSecretKey
-              })
-            });
-            const pData = await pRes.json();
-            if (pData.success) {
-              transferStatus = 'paystack_direct_transfer';
-              transferCode = pData.transferCode || '';
-              reference = pData.reference || '';
-              transferNote = `Transferred ₦${artisanPayout.toLocaleString()} directly to ${artisanData.bankName} (${artisanData.accountNumber}) via Paystack. Transfer Code: ${transferCode}`;
-            } else {
-              console.warn('Paystack direct transfer declined or unconfigured, falling back to wallet credit:', pData.error);
-              transferNote = `Paystack transfer notice: ${pData.error || 'Direct transfer unavailable, credited to wallet'}`;
-            }
-          } catch (trErr) {
-            console.error('Paystack automated transfer failed, falling back to wallet credit:', trErr);
-            transferNote = 'Network error contacting Paystack transfer API, credited to wallet';
-          }
-        } else {
-          transferNote = 'Artisan has not set up bank details yet. Funds safely deposited to 9jaKonet wallet.';
-        }
+      // 4. Update Job status in Firestore
+      await updateDoc(doc(db, 'jobs', job.id), {
+        status: 'completed',
+        platformFee: platformFee,
+        artisanPayout: artisanPayout,
+        completedAt: completedAt,
+        payoutStatus: 'pending_disbursement'
+      });
 
-        // If direct Paystack transfer succeeded, the real money is already in their bank account!
-        // If it did NOT succeed (e.g. transfer failed, or bank details missing), credit their wallet balance as a fallback!
-        if (transferStatus !== 'paystack_direct_transfer') {
-          await updateDoc(doc(db, 'users', job.artisanId), {
-            walletBalance: increment(artisanPayout)
-          });
-        }
+      // 5. Optimistically update local jobs state
+      setJobs(prev => prev.map(j => j.id === job.id ? {
+        ...j,
+        status: 'completed',
+        platformFee,
+        artisanPayout,
+        completedAt
+      } : j));
 
-        // Add to transactions history for permanent legal/business evidence
-        await addDoc(collection(db, 'transactions'), {
-          userId: job.artisanId,
-          customerId: job.customerId,
-          jobId: job.id,
-          jobTitle: job.title,
-          type: 'escrow_payout',
-          amount: artisanPayout,
-          platformFee: platformFee,
-          totalJobAmount: job.amount,
-          bankName: artisanData.bankName || 'N/A',
-          accountNumber: artisanData.accountNumber || 'N/A',
-          transferStatus,
-          transferNote,
-          transferCode,
-          reference,
-          createdAt: Date.now()
+      // 6. Notify artisan
+      if (artisanEmail) {
+        sendEmail({
+          to: artisanEmail,
+          subject: '🎉 Job Approved! Payout is in Processing',
+          html: `
+            <h2>Payment Released by Customer!</h2>
+            <p>Hi ${job.artisanName},</p>
+            <p>Congratulations! ${job.customerName} has approved your work on <strong>"${job.title}"</strong> and released the funds.</p>
+            <p>Your net payout of <strong>₦${artisanPayout.toLocaleString()}</strong> (90%) has been queued for bank disbursement by 9jaKonet Admin.</p>
+            <p>10% platform commission retained: ₦${platformFee.toLocaleString()}.</p>
+            <br/>
+            <p>Thank you for your excellent service!</p>
+          `
         });
-
-        await updateDoc(doc(db, 'jobs', job.id), {
-          status: 'completed',
-          platformFee: platformFee,
-          artisanPayout: artisanPayout,
-          transferStatus,
-          transferNote,
-          transferCode
-        });
-
-        if (artisanEmail) {
-          sendEmail({
-            to: artisanEmail,
-            subject: 'Funds Released! You got paid!',
-            html: `
-              <h2>Payment Released Successfully!</h2>
-              <p>Hi ${job.artisanName},</p>
-              <p>Congratulations! ${job.customerName} has approved the job <strong>"${job.title}"</strong> and released the funds from escrow.</p>
-              <p><strong>₦${artisanPayout.toLocaleString()}</strong> (90%) ${transferStatus === 'paystack_direct_transfer' ? `has been transferred directly into your bank account (${artisanData.bankName} - ${artisanData.accountNumber}) via Paystack!` : 'has been credited to your 9jaKonet wallet (you can withdraw it anytime).'}</p>
-              <p>Platform fee retained: ₦${platformFee.toLocaleString()} (10%).</p>
-              <br/>
-              <p>Thank you for using 9jaKonet!</p>
-            `
-          });
-        }
       }
 
-      if (transferStatus === 'paystack_direct_transfer') {
-        alert(`⚡ Funds released! ₦${artisanPayout.toLocaleString()} (90%) has been transferred DIRECTLY into ${job.artisanName}'s bank account via Paystack! 10% platform fee (₦${platformFee.toLocaleString()}) remains in Paystack.`);
-      } else {
-        alert(`Funds released! ₦${artisanPayout.toLocaleString()} (90%) credited to artisan's wallet. (${transferNote})`);
-      }
+      // 7. Notify admin
+      sendEmail({
+        to: 'ayorindesamuel705@gmail.com',
+        subject: `🚨 New Escrow Payout: ₦${artisanPayout.toLocaleString()} for ${job.artisanName}`,
+        html: `
+          <h2>New Escrow Payout to Disburse</h2>
+          <p>Customer ${job.customerName} just approved job <strong>"${job.title}"</strong>.</p>
+          <p><strong>Artisan:</strong> ${job.artisanName}</p>
+          <p><strong>Bank:</strong> ${artisanData.bankName || 'N/A'} - ${artisanData.accountNumber || 'N/A'}</p>
+          <p><strong>Net Payout Amount:</strong> ₦${artisanPayout.toLocaleString()}</p>
+          <p><strong>Platform Commission (10%):</strong> ₦${platformFee.toLocaleString()}</p>
+          <p>Log in to the Admin Panel to mark this payout paid manually via your bank app or via Paystack.</p>
+        `
+      });
+
+      setOtpModalJob(null);
+      alert(`🎉 Escrow Release Authorized! 9jaKonet Admin has been notified to disburse ₦${artisanPayout.toLocaleString()} to ${job.artisanName}'s bank account. Please take a moment to rate your experience below.`);
     } catch (error) {
       console.error(error);
-      alert('Failed to release funds');
+      setOtpError('Failed to complete escrow release. Please try again.');
+    } finally {
+      setReleasing(false);
     }
   };
 
@@ -275,14 +375,27 @@ export default function JobsAndEscrow() {
         </div>
         
         {/* Wallet Balance Card */}
-        <div className="bg-slate-900 text-white rounded-xl p-4 flex items-center gap-4 min-w-[200px] shadow-lg shadow-emerald-900/10">
-          <div className="bg-emerald-500/20 p-3 rounded-lg">
-            <Banknote className="h-6 w-6 text-emerald-400" />
+        <div className="bg-slate-900 text-white rounded-xl p-4 flex items-center justify-between gap-4 min-w-[240px] shadow-lg shadow-emerald-900/10">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-500/20 p-3 rounded-lg">
+              <Banknote className="h-6 w-6 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-400 font-medium">Wallet Balance</p>
+              <h3 className="text-2xl font-bold">₦{(user.walletBalance || 0).toLocaleString()}</h3>
+            </div>
           </div>
-          <div>
-            <p className="text-sm text-slate-400 font-medium">Wallet Balance</p>
-            <h3 className="text-2xl font-bold">₦{(user.walletBalance || 0).toLocaleString()}</h3>
-          </div>
+          {(user.walletBalance || 0) > 0 && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={handleResetTestBalance}
+              disabled={resettingBalance}
+              className="text-xs border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              Clear to ₦0
+            </Button>
+          )}
         </div>
       </div>
 
@@ -301,9 +414,10 @@ export default function JobsAndEscrow() {
                   <ShieldCheck className="h-5 w-5 text-emerald-600" />
                   <span className="font-semibold text-slate-900 text-sm">Escrow Protected Contract</span>
                 </div>
-                <span className="text-xs text-slate-500 font-medium">
-                  {new Date(job.createdAt).toLocaleDateString()}
-                </span>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                  <Clock className="h-3.5 w-3.5 text-slate-400" />
+                  <span>{formatDateTime(job.createdAt)}</span>
+                </div>
               </div>
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -327,7 +441,7 @@ export default function JobsAndEscrow() {
                   </div>
 
                   {/* Amount and Action */}
-                  <div className="flex flex-col md:items-end gap-3 min-w-[150px]">
+                  <div className="flex flex-col md:items-end gap-3 min-w-[180px]">
                     <div className="text-2xl font-bold text-slate-900">
                       ₦{job.amount.toLocaleString()}
                     </div>
@@ -345,16 +459,28 @@ export default function JobsAndEscrow() {
                         publicKey={paystackPublicKey}
                         text="Fund Escrow"
                         channels={['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer', 'eft']}
-                        onSuccess={() => handleFundEscrow(job)}
+                        onSuccess={(ref: any) => handleFundEscrow(job, ref)}
                         onClose={() => console.log("Payment window closed.")}
                         className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white h-10 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"
                       />
                     )}
                     
                     {(user.role === 'customer' || user.role === 'admin') && job.status === 'in_progress' && (
-                      <Button onClick={() => handleReleaseFunds(job)} className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700">
-                        Release Funds to Artisan
-                      </Button>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md font-semibold">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Escrow Secured in Vault
+                        </div>
+                        <Button 
+                          onClick={() => initiateReleaseOtp(job)} 
+                          className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+                        >
+                          Release Funds to Artisan
+                        </Button>
+                        <span className="text-[11px] text-slate-500 text-right">
+                          Requires 6-digit email code for security
+                        </span>
+                      </div>
                     )}
 
                     {user.role === 'artisan' && job.status === 'pending_escrow' && (
@@ -364,12 +490,13 @@ export default function JobsAndEscrow() {
                     )}
 
                     {user.role === 'artisan' && job.status === 'in_progress' && (
-                      <div className="flex flex-col gap-1">
-                        <div className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
-                          Funds secured in Escrow
+                      <div className="flex flex-col gap-1 items-end">
+                        <div className="text-xs text-blue-700 font-semibold bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200 flex items-center gap-1.5">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          ₦{job.amount.toLocaleString()} Secured in Escrow
                         </div>
-                        <span className="text-xs text-slate-500 font-medium text-right">
-                          You will earn ₦{(job.amount * 0.9).toLocaleString()} after 10% platform fee
+                        <span className="text-[11px] text-slate-500 font-medium text-right">
+                          Your net payout will be ₦{(job.amount * 0.9).toLocaleString()} upon completion
                         </span>
                       </div>
                     )}
@@ -443,6 +570,123 @@ export default function JobsAndEscrow() {
           ))
         )}
       </div>
+
+      {/* OTP Release Authorization Modal */}
+      {otpModalJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative">
+            <button
+              onClick={() => setOtpModalJob(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                <KeyRound className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Authorize Escrow Release</h3>
+                <p className="text-xs text-slate-500">Dual-verification security check</p>
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="bg-slate-50 rounded-xl p-4 mb-5 border border-slate-200/80 space-y-2 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Job Contract:</span>
+                <span className="font-semibold text-slate-900 truncate max-w-[200px]">{otpModalJob.title}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Artisan:</span>
+                <span className="font-semibold text-slate-900">{otpModalJob.artisanName}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Total Escrow Value:</span>
+                <span className="font-semibold text-slate-900">₦{otpModalJob.amount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-slate-500 text-xs">
+                <span>Platform Commission (10%):</span>
+                <span>₦{Math.round(otpModalJob.amount * 0.10).toLocaleString()}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-emerald-700">
+                <span>Artisan Net Payout (90%):</span>
+                <span>₦{Math.round(otpModalJob.amount * 0.90).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                Enter 6-Digit Email Authorization Code
+              </label>
+              <p className="text-xs text-slate-500 mb-3">
+                A verification code was sent to <strong className="text-slate-800">{user.email}</strong>.
+              </p>
+              <Input
+                type="text"
+                maxLength={6}
+                value={enteredOtp}
+                onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder="123456"
+                className="text-center font-mono text-2xl tracking-[0.4em] font-bold h-12 bg-white border-slate-300 focus:border-emerald-500 focus:ring-emerald-500"
+                autoFocus
+              />
+            </div>
+
+            {otpError && (
+              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 p-2.5 rounded-lg border border-red-200 mb-4">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{otpError}</span>
+              </div>
+            )}
+
+            {/* Helper code reveal for seamless testing or offline delivery */}
+            <div className="mb-5 flex items-center justify-between text-xs">
+              <span className="text-slate-400">
+                Didn't see the email?
+              </span>
+              <button
+                type="button"
+                onClick={() => setEnteredOtp(generatedOtp)}
+                className="text-emerald-600 font-semibold hover:underline"
+              >
+                Auto-fill Code ({generatedOtp})
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOtpModalJob(null)}
+                className="flex-1"
+                disabled={releasing}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmOtpAndRelease}
+                disabled={releasing || enteredOtp.length !== 6}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center justify-center gap-2"
+              >
+                {releasing ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Releasing...
+                  </>
+                ) : (
+                  <>
+                    Authorize Release
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

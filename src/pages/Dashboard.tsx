@@ -7,6 +7,8 @@ import { Job } from '../types';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { formatDateTime } from '../lib/utils';
+import { Clock } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, artisanProfile } = useAuthStore();
@@ -140,9 +142,15 @@ export default function Dashboard() {
                       <div>
                         <h3 className="font-semibold text-lg text-slate-900">{job.title}</h3>
                         <p className="mt-1 text-sm text-slate-600">{job.description}</p>
-                        <div className="mt-4 flex items-center gap-4 text-xs font-medium text-slate-500">
+                        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500">
                           <span className="bg-slate-100 px-2 py-1 rounded-md capitalize">Status: {job.status}</span>
                           <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md capitalize">Urgency: {job.urgency}</span>
+                          {job.createdAt && (
+                            <span className="flex items-center gap-1 text-slate-400">
+                              <Clock className="h-3.5 w-3.5" />
+                              {formatDateTime(job.createdAt)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <Link to="/jobs">

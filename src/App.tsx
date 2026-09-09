@@ -22,6 +22,7 @@ import Wallet from './pages/Wallet';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import EscrowPolicy from './pages/EscrowPolicy';
+import VerificationKYC from './pages/VerificationKYC';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -59,6 +60,12 @@ export default function App() {
           <Route path="terms" element={<Terms />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="escrow-policy" element={<EscrowPolicy />} />
+          
+          <Route path="verify-kyc" element={
+            <ProtectedRoute>
+              <VerificationKYC />
+            </ProtectedRoute>
+          } />
           
           <Route path="artisan-setup" element={
             <ProtectedRoute>

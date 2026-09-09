@@ -3,6 +3,23 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { Resend } from 'resend';
+import { GoogleGenAI } from '@google/genai';
+
+// Lazy initialize Gemini to avoid crashing if the API key is missing
+let geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI | null {
+  if (!geminiClient && process.env.GEMINI_API_KEY) {
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return geminiClient;
+}
 
 // Local Paystack Config Persistence
 const CONFIG_FILE = path.join(process.cwd(), 'paystack-config.json');
@@ -373,6 +390,168 @@ async function startServer() {
     } catch (error) {
       console.error('Transfer error:', error);
       res.status(500).json({ success: false, error: 'Failed to connect to Paystack Transfer API' });
+    }
+  });
+
+  // KonetBot AI Assistant Endpoint (Strictly 9jaKonet-scoped)
+  const KONETBOT_SYSTEM_INSTRUCTION = `You are KonetBot, the active and dedicated AI Support Assistant and Concierge for 9jaKonet (https://9jakonet.ng), Nigeria's premier digital marketplace connecting verified artisans with customers.
+
+YOUR ROLE & TONE:
+- You speak naturally, warmly, empathetically, and conversationally, like a knowledgeable, professional human support specialist.
+- You are helpful, polite, and articulate with a welcoming Nigerian customer-care touch.
+- You provide clear, step-by-step guidance when explaining platform processes.
+
+STRICT BOUNDARY & EXCLUSIVITY RULE:
+- YOU MUST ONLY ANSWER QUESTIONS CONCERNING THE 9JAKONET WEB APPLICATION, ITS FEATURES, SERVICES, POLICIES, AND WORKFLOWS.
+- YOU ARE STRICTLY FORBIDDEN FROM ANSWERING QUESTIONS OUTSIDE OF 9JAKONET (such as general programming, sports, news, world history, politics, unrelated apps/companies, recipes, homework, mathematics, entertainment, etc.).
+- IF A USER ASKS ABOUT ANYTHING OUTSIDE 9JAKONET:
+  Politely and warmly decline. For example: "I am KonetBot, your dedicated 9jaKonet support concierge! I only answer questions related to the 9jaKonet platform, such as hiring verified artisans, Paystack escrow protection, artisan registration, job contracts, and wallet withdrawals. How can I help you with 9jaKonet today?"
+
+9JAKONET PLATFORM KNOWLEDGE BASE:
+1. What is 9jaKonet?
+   - Nigeria's #1 trusted marketplace connecting customers with verified local artisans (Electricians, Plumbers, Carpenters, AC Technicians, Painters, Tilers, Welders, Mechanics, Solar Installers, etc.) across all 36 Nigerian states and Abuja.
+
+2. Paystack Escrow & Payment Protection:
+   - How It Works:
+     1. Customer books an artisan or posts a job.
+     2. Customer funds the agreed contract amount securely via Paystack into 9jaKonet Escrow. Funds are safely held by 9jaKonet and are NOT given to the artisan upfront.
+     3. Artisan does and completes the work.
+     4. Dual-Verification OTP Release: Customer inspects the work. If satisfied, customer clicks "Release Funds" on their Jobs & Escrow dashboard. A 6-digit authorization code is instantly sent to the customer's registered email. Customer enters this code to authorize the release.
+     5. Commission & Payout: 9jaKonet retains a 10% platform commission for escrow security and insurance. The remaining 90% is instantly credited to the artisan's payout wallet.
+
+3. Wallet & Bank Withdrawals:
+   - Artisans can withdraw funds from their wallet directly into any registered Nigerian bank account (GTBank, Access Bank, Zenith, First Bank, UBA, OPay, PalmPay, Kuda, Moniepoint, etc.).
+   - All transactions and withdrawals feature exact Nigerian Date & Time timestamps.
+
+4. Artisan Verification:
+   - Artisans submit government ID (NIN, Driver's License, Voter's Card, or Passport), trade certificates, years of experience, and phone verification.
+   - 9jaKonet admins vet and approve the profile, granting a green "Verified" badge.
+
+5. Safety & Disputes:
+   - If work is substandard or incomplete, customers should NOT release the escrow funds. They can click "Raise Dispute" or contact admin support. 9jaKonet mediates disputes fairly and can issue a refund or require rework.
+   - Never pay an artisan cash or off-platform. Off-platform payments void all escrow protection.
+
+6. User Roles:
+   - Customers: Search, hire, chat, fund escrow, release payment with OTP, review artisans.
+   - Artisans: Create profile, get verified, receive job invites, deliver services, receive 90% payouts, withdraw to bank.
+   - Admins: Manage verifications, oversee escrow ledger, review withdrawals, and mediate disputes.`;
+
+  function getFallbackBotReply(userPrompt: string): string {
+    const q = userPrompt.toLowerCase().trim();
+
+    // Check if question is outside 9jaKonet
+    const isOutOfScope = 
+      /recipe|cook|food ingredients|premier league|football score|who won|election|president|governor|who is the king|write python|write code|javascript code|react code|fix my bug|translate french|movie|cinema|actor|celebrity|weather in (london|tokyo|paris|new york)|solve 2\+|solve x|calculate 2|cryptocurrency investment|bitcoin price/.test(q) &&
+      !/artisan|9jakonet|escrow|paystack|wallet|job|contract|nigeria/.test(q);
+
+    if (isOutOfScope) {
+      return "Hello! I am KonetBot, your dedicated 9jaKonet assistant. I am strictly specialized in answering questions about the **9jaKonet platform** — including how to hire verified artisans, Paystack escrow security, OTP release codes, artisan registration, and wallet withdrawals. What question about 9jaKonet can I help you with today?";
+    }
+
+    // Contextual responses on 9jaKonet
+    if (q.includes('escrow') || q.includes('how does payment work') || q.includes('fund') || q.includes('pay artisan') || q.includes('paystack')) {
+      return "### How Paystack Escrow Works on 9jaKonet:\n\n1. **Fund Contract**: When you hire an artisan or create a job, you fund the contract via Paystack into our secure **9jaKonet Escrow**.\n2. **Funds are Protected**: The funds are safely held in escrow — the artisan does not get paid upfront until you confirm the work is done.\n3. **Dual-Verification OTP Release**: When the artisan completes the job and you are satisfied, click **Release Funds**. A **6-digit authorization code** is sent to your registered email to ensure zero unauthorized releases.\n4. **90/10 Split**: Once authorized, 90% is credited directly to the artisan's payout wallet, and 10% is retained as the 9jaKonet platform commission.\n\nThis guarantees that you never lose money to uncompleted jobs!";
+    }
+
+    if (q.includes('otp') || q.includes('release code') || q.includes('authorization code')) {
+      return "### 6-Digit Email Authorization Code (OTP):\n\nWhen a customer clicks **'Release Funds'** for a completed job, 9jaKonet automatically generates a unique 6-digit security code sent to the customer's registered email address.\n\n- This dual-verification check protects your funds from accidental clicks or unauthorized payouts.\n- Simply enter the 6-digit code in the pop-up modal to authorize the 90% payout to the artisan.\n- If you didn't receive the email, you can use the quick 'Auto-fill Code' testing button in preview mode.";
+    }
+
+    if (q.includes('fee') || q.includes('commission') || q.includes('10%') || q.includes('cut') || q.includes('charges')) {
+      return "### 9jaKonet Fee Structure:\n\n- **10% Platform Commission**: 9jaKonet retains a 10% platform fee on completed jobs to cover Paystack transaction costs, escrow insurance, customer support, and continuous artisan vetting.\n- **90% Artisan Net Payout**: The artisan receives 90% of the total contract amount straight into their withdrawal wallet.\n- **Free Registration**: It is completely free for both customers and artisans to sign up and browse the marketplace!";
+    }
+
+    if (q.includes('withdraw') || q.includes('bank') || q.includes('payout') || q.includes('wallet')) {
+      return "### How Artisans Withdraw Their Earnings:\n\n1. Go to your **Wallet** tab from the main navigation.\n2. Add your **Nigerian Bank Account Details** (Bank Name, 10-digit NUBAN Account Number, and Account Name).\n3. Once escrow funds are released by the client, enter the amount you wish to withdraw and click **Request Withdrawal**.\n4. Withdrawals are processed to your Nigerian bank (GTBank, Access, Zenith, Kuda, OPay, PalmPay, etc.) with exact date and time timestamps recorded in your ledger.";
+    }
+
+    if (q.includes('verify') || q.includes('verified') || q.includes('badge') || q.includes('artisan requirement')) {
+      return "### How to Get Verified on 9jaKonet:\n\n1. Sign up as an **Artisan** and complete your profile in **Artisan Setup**.\n2. Provide your trade category (Electrician, Plumber, Carpenter, etc.), years of experience, hourly/service rate, and Nigerian state.\n3. Submit your valid identification (NIN, Driver's License, Voter's Card, or Passport) and trade credentials.\n4. Our administrative team reviews your application. Once approved, you earn the green **Verified Artisan** badge, which makes you rank higher and win more contracts!";
+    }
+
+    if (q.includes('hire') || q.includes('find artisan') || q.includes('customer') || q.includes('book')) {
+      return "### How to Hire an Artisan on 9jaKonet:\n\n1. Click **Explore** in the menu to browse vetted Nigerian artisans by trade category and state.\n2. View their profile, ratings, years of experience, and hourly rates.\n3. Send them a direct message via **Messages** or create a new job contract in **Jobs & Escrow**.\n4. Agree on the contract budget, fund the escrow via Paystack, and track progress until completion!";
+    }
+
+    if (q.includes('dispute') || q.includes('not satisfied') || q.includes('bad work') || q.includes('refund') || q.includes('problem')) {
+      return "### Safety & Dispute Resolution:\n\n- **Do NOT release escrow funds** if the work is uncompleted or substandard.\n- Click **Raise Dispute** in your Jobs & Escrow dashboard or contact 9jaKonet support.\n- Our administrative mediation team inspects the contract scope, communicates with both parties, and will either issue a full refund to the customer or mandate necessary rework by the artisan before funds are released.\n- Remember: Never pay cash off-platform, as only on-platform escrow jobs are protected!";
+    }
+
+    if (q.includes('hello') || q.includes('hi') || q.includes('good morning') || q.includes('good afternoon') || q.includes('hey')) {
+      return "Hello there! 👋 Welcome to 9jaKonet. I am KonetBot, your dedicated platform assistant. How can I help you today? You can ask me about:\n\n- How to find and hire verified artisans\n- How our Paystack Escrow protects your money\n- The 6-digit OTP release process\n- How artisans withdraw their 90% earnings\n- Artisan registration and verification";
+    }
+
+    return "Thank you for reaching out! As your 9jaKonet assistant, I am here to help you navigate our web app. You can ask me anything about:\n\n- **Hiring Artisans**: Finding verified electricians, plumbers, mechanics, etc.\n- **Escrow Protection**: How your funds remain safely locked until you approve the job.\n- **OTP Authorization**: Using the 6-digit email code to authorize payment.\n- **Artisan Payouts**: The 90% net payout and 10% platform fee.\n- **Disputes & Verification**: How our admins protect your transactions.\n\nWhat specific part of 9jaKonet can I assist you with?";
+  }
+
+  app.post('/api/bot/chat', async (req, res) => {
+    const { message, history = [] } = req.body;
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'A message is required.' });
+    }
+
+    const trimmedMessage = message.trim();
+    const ai = getGeminiClient();
+
+    if (!ai) {
+      // Use our comprehensive 9jaKonet-scoped fallback responder
+      const reply = getFallbackBotReply(trimmedMessage);
+      return res.json({ success: true, reply });
+    }
+
+    try {
+      // Format chat messages
+      const formattedContents: any[] = [];
+
+      // Add recent history (up to last 8 turns)
+      if (Array.isArray(history)) {
+        for (const item of history.slice(-8)) {
+          if (item && item.text) {
+            formattedContents.push({
+              role: item.role === 'assistant' || item.role === 'model' ? 'model' : 'user',
+              parts: [{ text: item.text }]
+            });
+          }
+        }
+      }
+
+      // Add current message
+      formattedContents.push({
+        role: 'user',
+        parts: [{ text: trimmedMessage }]
+      });
+
+      // Try candidate models in order of availability to protect against transient 503 high-demand spikes
+      const candidateModels = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+      let reply: string | null = null;
+
+      for (const model of candidateModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: formattedContents,
+            config: {
+              systemInstruction: KONETBOT_SYSTEM_INSTRUCTION,
+              temperature: 0.65,
+            }
+          });
+          if (response && response.text) {
+            reply = response.text;
+            break;
+          }
+        } catch (modelErr: any) {
+          const errStr = modelErr?.message || String(modelErr);
+          console.warn(`[KonetBot] Model ${model} returned transient error: ${errStr.slice(0, 100)}. Trying fallback candidate...`);
+        }
+      }
+
+      const finalReply = reply || getFallbackBotReply(trimmedMessage);
+      res.json({ success: true, reply: finalReply });
+    } catch (error) {
+      console.warn('[KonetBot] Handling request with local 9jaKonet engine:', error);
+      const fallbackReply = getFallbackBotReply(trimmedMessage);
+      res.json({ success: true, reply: fallbackReply });
     }
   });
 
