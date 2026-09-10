@@ -86,16 +86,22 @@ async function startServer() {
 
     try {
       const data = await resend.emails.send({
-        from: '9jaKonet <onboarding@resend.dev>', // Free tier default, must be onboarding@resend.dev until custom domain is verified
+        from: '9jaKonet <info@mooregloballtd.online>',
         to: Array.isArray(to) ? to : [to],
         subject: subject,
         html: html,
       });
 
+      if (data.error) {
+        console.error('Resend API returned an error:', data.error);
+        return res.status(400).json({ success: false, error: data.error.message || 'Resend rejected the email' });
+      }
+
+      console.log('Successfully sent email via Resend:', data);
       res.json({ success: true, data });
-    } catch (error) {
-      console.error('Failed to send email via Resend:', error);
-      res.status(500).json({ success: false, error: 'Failed to send email' });
+    } catch (error: any) {
+      console.error('Exception thrown while sending email via Resend:', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to send email' });
     }
   });
 

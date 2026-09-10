@@ -561,7 +561,8 @@ export default function AdminDashboard() {
         console.warn('API sync notice:', e);
       }
 
-      toast.info('✅ Paystack configuration saved successfully! Keys are safely stored and active for automated bank payouts.');
+      toast.success('Configuration saved successfully!');
+      setSaveStatus('Saved!');
       checkLiveBalance();
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
@@ -1763,7 +1764,10 @@ export default function AdminDashboard() {
                   placeholder="re_xxxxxxxxxxxxxxxxx"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs mb-1"
                   value={resendKeyInput}
-                  onChange={(e) => setResendKeyInput(e.target.value)}
+                  onChange={(e) => {
+                    setResendKeyInput(e.target.value);
+                    setSaveStatus('Save Configuration');
+                  }}
                 />
                 <p className="text-[11px] text-slate-500 mb-4">Required to send 6-digit Escrow OTPs to customers.</p>
               </div>
@@ -1775,7 +1779,10 @@ export default function AdminDashboard() {
                   placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs"
                   value={paystackKeyInput}
-                  onChange={(e) => setPaystackKeyInput(e.target.value)}
+                  onChange={(e) => {
+                    setPaystackKeyInput(e.target.value);
+                    setSaveStatus('Save Configuration');
+                  }}
                 />
               </div>
 
@@ -1786,7 +1793,10 @@ export default function AdminDashboard() {
                   placeholder="sk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-xs"
                   value={paystackSecretInput}
-                  onChange={(e) => setPaystackSecretInput(e.target.value)}
+                  onChange={(e) => {
+                    setPaystackSecretInput(e.target.value);
+                    setSaveStatus('Save Configuration');
+                  }}
                 />
                 <p className="text-xs text-slate-500 mt-1">This key is securely stored on the server to execute instant 90% payouts to artisans when customers release escrow funds.</p>
               </div>
