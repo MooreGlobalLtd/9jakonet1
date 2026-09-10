@@ -10,6 +10,7 @@ import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 import { withTimeout } from '../lib/timeout';
+import { toast } from 'sonner';
 
 interface Withdrawal {
   id: string;
@@ -48,6 +49,7 @@ export default function AdminDashboard() {
   // Drilldown states for interactive stat cards
   const [activeDetailView, setActiveDetailView] = useState<'revenue' | 'users' | 'verified_artisans' | 'customers' | 'pending_verifications' | 'kyc_security' | 'none'>('none');
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'customer' | 'artisan' | 'admin'>('all');
   const [revenueSearchTerm, setRevenueSearchTerm] = useState('');
   const [resettingBalances, setResettingBalances] = useState(false);
@@ -412,6 +414,13 @@ export default function AdminDashboard() {
         toast.info('Failed to reject and refund withdrawal.');
       }
     }
+  };
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.info("Copied to clipboard!");
   };
 
   const markWithdrawalComplete = async (withdrawalId: string) => {
@@ -1652,7 +1661,16 @@ export default function AdminDashboard() {
                             type="button" 
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer flex items-center gap-1.5"
                             disabled={isProcessing}
-                            onClick={() => executePaystackWithdrawal(w)}
+                            onClick={() => {
+                              // Dynamically pass updated bank details if the record was missing them
+                              const updatedW = {
+                                ...w, 
+                                bankName: (w.bankName === 'Not Set' || w.bankName === 'N/A') ? reqUser?.bankName || w.bankName : w.bankName,
+                                accountNumber: (w.accountNumber === 'Not Set' || w.accountNumber === 'N/A') ? reqUser?.accountNumber || w.accountNumber : w.accountNumber,
+                                accountName: (w.accountName === w.artisanName) ? reqUser?.accountName || w.accountName : w.accountName
+                              };
+                              executePaystackWithdrawal(updatedW);
+                            }}
                           >
                             {isProcessing ? 'Transferring...' : '⚡ Pay via Paystack'}
                           </Button>
@@ -1668,41 +1686,37 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => rejectWithdrawal(w)}
-                              className="text-xs text-red-600 hover:text-red-800 underline"
+                              className="text-xs text-red-600 hover:text-red-700 underline"
                             >
                               Reject & Refund
                             </button>
                           </div>
                         </div>
                       </div>
-                      <div className="bg-slate-50 p-3 rounded-md border border-slate-100 text-sm grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
                         <div>
-                          <span className="text-xs text-slate-500 block">Bank</span>
-                          <span className="font-semibold text-slate-900">{w.bankName}</span>
+                          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-0.5">Bank</p>
+                          <p className="text-sm font-medium text-slate-900">{(w.bankName === 'Not Set' || w.bankName === 'N/A') ? reqUser?.bankName || 'Not Set' : w.bankName}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-slate-500 block">Account Number</span>
+                          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-0.5">Account Number</p>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold text-slate-900">{w.accountNumber}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(w.accountNumber);
-                                toast.info(`Copied account number ${w.accountNumber} to clipboard!`);
-                              }}
-                              className="text-[11px] font-medium text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                              title="Copy account number"
-                            >
-                              Copy
-                            </button>
+                            <p className="text-sm font-mono text-slate-900">{(w.accountNumber === 'Not Set' || w.accountNumber === 'N/A') ? reqUser?.accountNumber || 'Not Set' : w.accountNumber}</p>
+                            {((w.accountNumber !== 'Not Set' && w.accountNumber !== 'N/A') || reqUser?.accountNumber) && (
+                              <button 
+                                onClick={() => handleCopy(((w.accountNumber === 'Not Set' || w.accountNumber === 'N/A') ? reqUser?.accountNumber : w.accountNumber) || '', w.id)}
+                                className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-emerald-200"
+                                type="button"
+                              >
+                                {copiedId === w.id ? <CheckCircle className="h-3 w-3" /> : 'Copy'}
+                              </button>
+                            )}
                           </div>
                         </div>
-                        {w.accountName && (
-                          <div className="col-span-2">
-                            <span className="text-xs text-slate-500 block">Verified Account Name</span>
-                            <span className="font-medium text-emerald-800">{w.accountName}</span>
-                          </div>
-                        )}
+                        <div className="col-span-2">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-0.5">Verified Account Name</p>
+                          <p className="text-sm font-medium text-slate-900">{w.accountName === w.artisanName ? reqUser?.accountName || w.accountName : w.accountName}</p>
+                        </div>
                       </div>
                     </div>
                   )
