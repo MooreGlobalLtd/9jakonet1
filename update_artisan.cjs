@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+const fs = require('fs');
+
+const code = `import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { doc, setDoc } from 'firebase/firestore';
@@ -47,7 +49,7 @@ export default function ArtisanSetup() {
     if (!user) return;
     setLoading(true);
     
-    const fullLocation = `${address}, ${city}, ${state}`;
+    const fullLocation = \`\${address}, \${city}, \${state}\`;
 
     try {
       if (!isQuotaExhausted()) {
@@ -197,3 +199,6 @@ export default function ArtisanSetup() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/ArtisanSetup.tsx', code);

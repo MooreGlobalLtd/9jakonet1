@@ -24,6 +24,7 @@ import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import EscrowPolicy from './pages/EscrowPolicy';
 import VerificationKYC from './pages/VerificationKYC';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -52,6 +53,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-center" richColors />
+      <PWAInstallButton variant="banner" />
       <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Home />} />

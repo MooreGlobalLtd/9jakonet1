@@ -6,7 +6,7 @@ import { EscrowContract, ArtisanProfile } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight, MapPin } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
@@ -474,11 +474,17 @@ export default function JobsAndEscrow() {
                   {/* Job Details */}
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-slate-900 mb-1">{job.title}</h3>
-                    <p className="text-sm text-slate-600 mb-4">
+                    <p className="text-sm text-slate-600 mb-2">
                       {user.role === 'customer' 
                         ? `Artisan: ${job.artisanName}` 
                         : `Customer: ${job.customerName}`
                       }
+                      {job.location && job.location !== 'Not specified' && (
+                        <span className="block mt-1 text-xs text-slate-500">
+                          <MapPin className="inline h-3 w-3 mr-1" />
+                          {job.location}
+                        </span>
+                      )}
                     </p>
                     
                     <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 capitalize">

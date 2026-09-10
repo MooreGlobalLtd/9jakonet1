@@ -1,48 +1,48 @@
-/**
- * 9jaKonet Intelligent Domain Knowledge Engine
- * Provides instant, expert answers for Nigerian customers and artisans across all core topics.
- * Ensures the bot never repeats a generic message even when offline or hosted on a static provider.
- */
+export function getSmartBotAnswer(q: string): string {
+  q = q.toLowerCase();
 
-export function getSmartBotAnswer(userPrompt: string): string {
-  const q = userPrompt.toLowerCase().trim();
+  // Helper to ensure strict word boundaries for all keywords
+  const hasWords = (words: string[]) => {
+    return words.some(w => {
+      // Escape for regex, then wrap in word boundaries. 
+      // If the phrase has spaces or punctuation, word boundaries still apply to the start and end words.
+      return new RegExp('\\b' + w.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(q);
+    });
+  };
 
-  // 1. Trades: Plumbers
-  if (/plumber|plumbing|pipe|\bleak\b|tap|water heater|sink|borehole|water pump|drainage/.test(q)) {
-    return `### Verified Plumbers on 9jaKonet 🔧
+  // 1. Plumbers
+  if (hasWords(['plumber', 'plumbing', 'pipe leak', 'water tank', 'borehole', 'drainage', 'toilet', 'bathroom'])) {
+    return `### Professional Plumbers 🚰
 
 Yes! You can hire vetted, experienced plumbers on 9jaKonet across **Lagos (Ikeja, Lekki, Yaba, Surulere, Ikorodu, etc.), Abuja, Port Harcourt, Ibadan**, and all 36 states.
 
 - **Services**: Emergency pipe leaks, bathroom & toilet sanitary fittings, borehole pumping machines, drainage unblocking, and water tank installations.
-- **How to Hire**: Go to **Explore** ➜ filter by Trade (**Plumbing**) and your State ➜ compare reviews and ratings ➜ click **Hire** to fund the Paystack Escrow.
-- **Protection**: Your money stays locked in escrow until the plumbing job is completed and tested by you!`;
+- **How to Hire**: Go to **Explore** ➜ filter by Trade (**Plumbing**) and your State ➜ compare reviews and ratings ➜ click **Hire** to fund the Paystack Escrow.`;
   }
 
   // 2. Trades: Electricians & Solar
-  if (/electrician|electrical|wiring|light|fuse|inverter|solar|generator|gen repair/.test(q)) {
+  if (hasWords(['electrician', 'electrical', 'solar', 'inverter', 'wiring', 'power issue', 'generator'])) {
     return `### Certified Electricians & Solar Technicians ⚡
 
 9jaKonet connects you with licensed electrical technicians and solar specialists across Nigeria:
 
-- **Services**: House wiring & conduit piping, changeover switches, solar panel mounting, hybrid inverter configuration, circuit breaker troubleshooting, and soundproof generator repairs.
-- **Safety Vetted**: All technicians submit trade certifications, government ID, and live GPS verification.
+- **Services**: Solar panel/inverter installations, full house wiring, prepaid meter setups, generator repairs, and emergency fault fixing.
 - **Escrow Guarantee**: Payment is secured via Paystack and only released via your 6-digit email OTP after electrical testing is complete.`;
   }
 
-  // 3. Trades: Carpenters & Woodwork
-  if (/carpenter|furniture|cabinet|roofing|wood|wardrobe|bed frame|kitchen cabinet/.test(q)) {
-    return `### Master Carpenters & Furniture Makers 🪚
+  // 3. Trades: Carpenters
+  if (hasWords(['carpenter', 'carpentry', 'woodwork', 'furniture', 'wardrobe', 'cabinet', 'roofing'])) {
+    return `### Expert Carpenters & Woodworkers 🪚
 
-Looking for quality woodwork? On 9jaKonet, you can hire verified carpenters for:
+Need custom furniture, roofing, or wardrobe installations? 
 
-- Custom kitchen cabinets, modern wardrobes, bed frames, flush doors, and roofing truss repairs.
-- Polishing, furniture repair, and security door lock installations.
-- Browse portfolio photos on each carpenter's profile in the **Explore** tab to inspect completed projects before booking.`;
+- Browse portfolio photos on each carpenter's profile in the **Explore** tab to inspect completed projects before booking.
+- All carpenters are identity-verified (NIN/Driver's License) for safe home visits.`;
   }
 
   // 4. Trades: AC & Cooling
-  if (/\bac\b|air condition|refrigerator|fridge|cooling|chiller|gas refill/.test(q)) {
-    return `### AC Technicians & Refrigeration Specialists ❄️
+  if (hasWords(['ac', 'ac technician', 'air condition', 'air conditioning', 'refrigerator', 'fridge', 'cooling', 'chiller', 'gas refill'])) {
+    return `### AC & Cooling Specialists ❄️
 
 Get rapid, professional cooling and HVAC repairs across Nigeria:
 
@@ -50,69 +50,69 @@ Get rapid, professional cooling and HVAC repairs across Nigeria:
 - Transparent hourly or flat service rates are visible directly on each technician's profile with zero hidden charges.`;
   }
 
-  // 5. Trades: Auto Mechanics
-  if (/mechanic|\bauto\b|car repair|brake|engine|panel beater|vulcanizer|spray paint car/.test(q)) {
-    return `### Auto Mechanics & Diagnostic Specialists 🚗
-
-Find experienced automobile mechanics, auto-electricians, and computer diagnostic technicians near you:
-
-- Engine overhaul, brake servicing, suspension repairs, computerized scanning, and body panel beating.
-- Book with confidence under 9jaKonet Escrow so you never pay upfront for unverified parts or shoddy repairs.`;
-  }
-
-  // 6. Trades: Painters, Tilers, Welders, Cleaners
-  if (/painter|painting|tiler|welder|mason|clean|masonry|welding|iron|fumigation|flooring/.test(q)) {
-    return `### Verified Artisans Across All Trades 🛠️
+  // 5. General Artisans
+  if (hasWords(['artisan', 'mechanic', 'tailor', 'painter', 'cleaner', 'tiler', 'welder', 'barber', 'makeup'])) {
+    return `### Find Any Verified Artisan 🛠️
 
 We feature verified Nigerian artisans across all core trades:
 
-- **Painters**: Interior/exterior painting, screeding, texturing, wallpaper installation.
-- **Tilers**: Porcelain, marble, ceramic floor and wall tiling with precision leveling.
-- **Welders**: Security gates, window burglar-proofing, iron handrails, and metal fabrication.
-- **Cleaners**: Post-construction cleaning, residential deep cleaning, and office fumigation.
-
-Explore verified profiles with verified green badges on the **Explore** tab!`;
+1. Go to the **Explore** page.
+2. Tap the **Trade Category** search box or choose from the quick filters (Tailor, Mechanic, Painter, Tiler, Welder, Cleaner, etc.).
+3. Filter by your exact location (State or City) to find professionals right in your neighborhood!`;
   }
 
-  // 7. Identity Verification (KYC) & Documents
-  if (/\bkyc\b|\bnin\b|identity|voter|driver'?s license|passport|document|how to verify|verification process|verification take|get verified|verify/.test(q)) {
-    return `### Mandatory Identity Verification (KYC) on 9jaKonet 🛡️
+  // 6. Verification & Safety (KYC)
+  if (hasWords(['kyc', 'verify', 'verification', 'safe', 'safety', 'nin', 'bvn', 'driver license', 'fake', 'scam'])) {
+    return `### 9jaKonet Safety & Verification (KYC) 🛡️
 
 To guarantee 100% safety for every Nigerian home and workplace, 9jaKonet enforces mandatory verification:
 
 1. **Personal Details**: Your full legal name, active phone number, and residential address.
-2. **Official Nigerian ID**: Provide your NIN (National Identification Number), Voter's Card, Driver's License, or International Passport with a clear photo.
-3. **Live Biometric Selfie**: Captured with anti-spoofing to match your submitted document.
-4. **GPS Location or Address Confirmation**: Verifies your operating state and local government area (LGA).
+2. **Government ID**: A valid NIN slip, Driver's License, or Voter's Card.
+3. **Live Selfie Map**: A real-time photo capture mapped to your device.
 
-- **Instant Processing**: Once submitted, you unlock the green **Verified Badge**, building instant trust with clients nationwide!`;
+*Artisans cannot accept jobs or withdraw funds until their KYC is manually approved by our admins.*`;
   }
 
-  // 8. Live Phone Location & GPS Activation
-  if (/location|gps|phone location|toggle|turn on location|trace|map|coordinates|safari location|chrome location/.test(q)) {
-    return `### How to Turn On Location On Your Phone 📍
+  // 7. Location & GPS
+  if (hasWords(['location', 'gps', 'phone location', 'toggle', 'turn on location', 'trace', 'map', 'coordinates', 'safari location', 'chrome location'])) {
+    return `### How to Enable Location (GPS) 📍
 
-**Why Location is Used:**
 When artisans visit homes or offices, active GPS coordinates provide safety traceability and verify on-site arrival. Your data is encrypted and strictly used for protection.
 
-**For Android Phones (Samsung, Tecno, Infinix, Xiaomi, etc.):**
-1. Swipe down from the top of your screen to open **Quick Settings**.
+**To turn it on:**
+1. Check the top bar of your browser (near the URL) for a prompt asking for Location Access and click **Allow**.
 2. Tap the **Location (📍)** icon so it turns blue / active.
-3. In Google Chrome, tap the **Lock (🔒) or Settings** icon beside the URL \`9jakonet.ng\` ➜ **Site Settings / Permissions** ➜ **Location** ➜ Choose **Allow**.
 
-**For iPhones (Apple Safari):**
-1. Open iPhone **Settings** ➜ **Privacy & Security** ➜ **Location Services** ➜ Switch ON.
-2. In Safari, tap the **'aA'** button on the bottom left of your address bar ➜ **Website Settings** ➜ **Location** ➜ Select **Allow** ➜ Refresh the page.
+**If it is blocked on your phone:**
+- **iPhone/iOS**: 
+  1. Open iPhone **Settings** ➜ **Privacy & Security** ➜ **Location Services** ➜ Switch ON.
+  2. Scroll down to Safari (or Chrome) ➜ select **While Using the App**.
+- **Android**: 
+  1. Go to phone **Settings** ➜ **Location** ➜ Turn ON.
+  2. Open Chrome settings ➜ **Site Settings** ➜ **Location** ➜ Allow for 9jaKonet.`;
+  }
 
-*(If your device does not have GPS, you can also use your verified Nigerian State & LGA directly!)*`;
+  // 8. The Core Value Proposition
+  if (hasWords(['what is 9jakonet', 'about us', 'who are you', 'how does this work', 'what do you do'])) {
+    return `### Welcome to 9jaKonet! 🇳🇬
+
+**9jaKonet** is Nigeria's most secure and reliable artisan marketplace.
+
+We connect households and businesses with heavily vetted, background-checked professionals (Plumbers, Electricians, AC Techs, Carpenters, etc.). 
+
+**Why use 9jaKonet?**
+- 🛡️ **Zero Fraud**: You pay into Paystack Escrow. The artisan only gets paid when you are 100% satisfied.
+- 📍 **GPS Traceability**: We track artisan movement for home-visit safety.
+- 💳 **Seamless Payouts**: Artisans receive their 90% earnings directly into their local bank accounts.`;
   }
 
   // 9. Paystack Escrow & Payment Safety
-  if (/escrow|paystack|how does payment work|fund|pay artisan|is my money safe|payment safety|how to pay/.test(q)) {
+  if (hasWords(['escrow', 'paystack', 'how does payment work', 'fund', 'pay artisan', 'is my money safe', 'payment safety', 'how to pay'])) {
     return `### How Paystack Escrow Works on 9jaKonet 🔒
 
 1. **Fund Contract**: When hiring an artisan or posting a job, you fund the agreed budget via Paystack (Debit Card, Bank Transfer, USSD).
-2. **Held in Trust**: Your funds are locked safely in 9jaKonet Escrow — the artisan does **NOT** get paid upfront.
+2. **Funds Held in Trust**: Your funds are locked safely in 9jaKonet Escrow — the artisan does **NOT** get paid upfront.
 3. **Job Delivery**: The artisan visits your location and carries out the agreed work to your satisfaction.
 4. **Dual-Verification OTP Release**: When you click **Release Funds**, a **6-digit authorization code** is sent to your registered email. Enter this code to finalize payment.
 5. **90/10 Split**: 90% is credited directly to the artisan's wallet, and 10% is retained as 9jaKonet platform commission.
@@ -121,11 +121,10 @@ When artisans visit homes or offices, active GPS coordinates provide safety trac
   }
 
   // 10. 6-Digit Email OTP Release Code
-  if (/otp|release code|authorization code|6-digit|email code|release money|didn't get otp|did not receive/.test(q)) {
+  if (hasWords(['otp', 'release code', 'authorization code', '6-digit', 'email code', 'release money', 'didn\'t get otp', 'did not receive'])) {
     return `### 6-Digit Email Authorization Code (OTP) ✉️
 
 When a customer clicks **'Release Funds'** on their Jobs dashboard:
-
 - A unique **6-digit security code** is instantly dispatched to your registered email address.
 - This prevents unauthorized payouts or accidental clicks.
 - Enter the code in the confirmation modal to release the 90% net payout to the artisan.
@@ -133,7 +132,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
   }
 
   // 11. Fees, Commissions & Payout Split
-  if (/fee|commission|10%|90%|cut|charges|percentage|platform fee|pricing/.test(q)) {
+  if (hasWords(['fee', 'commission', '10%', '90%', 'cut', 'charges', 'percentage', 'platform fee', 'pricing'])) {
     return `### Transparent Fee Structure 💼
 
 - **10% Platform Commission**: Retained by 9jaKonet upon successful job completion. This covers Paystack payment processing, escrow dispute insurance, artisan background vetting, and customer care.
@@ -142,7 +141,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
   }
 
   // 12. Withdrawals & Nigerian Bank Accounts
-  if (/withdraw|bank|payout|wallet|transfer to bank|gtbank|zenith|opay|palmpay|kuda|moniepoint|access bank|first bank/.test(q)) {
+  if (hasWords(['withdraw', 'withdrawal', 'bank', 'payout', 'wallet', 'transfer to bank', 'gtbank', 'zenith', 'opay', 'palmpay', 'kuda', 'moniepoint', 'access bank', 'first bank'])) {
     return `### How Artisans Withdraw to Nigerian Banks 🏦
 
 1. Navigate to the **Wallet** tab in the main navigation.
@@ -153,7 +152,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
   }
 
   // 13. Disputes, Refunds & Substandard Work
-  if (/dispute|not satisfied|bad work|poor work|refund|artisan ran away|did not show up|problem|complaint/.test(q)) {
+  if (hasWords(['dispute', 'not satisfied', 'bad work', 'poor work', 'refund', 'artisan ran away', 'did not show up', 'problem', 'complaint'])) {
     return `### Safety & Dispute Resolution ⚖️
 
 - **Do NOT release escrow funds** if the job is incomplete, substandard, or damaged.
@@ -163,7 +162,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
   }
 
   // 14. Hiring Process & Booking
-  if (/hire|book|find artisan|post job|create job|contract|invite/.test(q)) {
+  if (hasWords(['hire', 'book', 'find artisan', 'post job', 'create job', 'contract', 'invite'])) {
     return `### How to Hire an Artisan on 9jaKonet 🚀
 
 1. Click **Explore** in the navigation bar.
@@ -174,7 +173,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
   }
 
   // 15. Contact Support & Management
-  if (/support|contact|help|email|phone number|call|admin|customer care/.test(q)) {
+  if (hasWords(['support', 'contact', 'help', 'email', 'phone number', 'call', 'admin', 'customer care'])) {
     return `### 9jaKonet Support & Customer Concierge 💬
 
 Need direct assistance from our management team?
@@ -185,7 +184,7 @@ Need direct assistance from our management team?
   }
 
   // 16. How to Make Money / How Artisans Earn on 9jaKonet
-  if (/make money|earn|earn money|how do i get paid|income|charge|service fee|artisan work|getting jobs/.test(q)) {
+  if (hasWords(['make money', 'earn', 'earn money', 'how do i get paid', 'income', 'charge', 'service fee', 'artisan work', 'getting jobs'])) {
     return `### How to Make Money as an Artisan on 9jaKonet 💰
 
 1. **Sign Up for Free**: Choose **"I am an Artisan"** on the registration page.
@@ -197,7 +196,7 @@ Need direct assistance from our management team?
   }
 
   // 17. Account Creation & Sign Up Help
-  if (/sign up|register|create account|login|log in|password|email address|create a new account/.test(q)) {
+  if (hasWords(['sign up', 'register', 'create account', 'login', 'log in', 'password', 'email address', 'create a new account'])) {
     return `### Creating an Account on 9jaKonet 📝
 
 You can register on 9jaKonet easily in just two steps:
@@ -210,7 +209,7 @@ You can register on 9jaKonet easily in just two steps:
   }
 
   // 18. Profile Photo & Updating Information
-  if (/profile photo|picture|change photo|upload picture|avatar|update profile|save changes/.test(q)) {
+  if (hasWords(['profile photo', 'picture', 'change photo', 'upload picture', 'avatar', 'update profile', 'save changes'])) {
     return `### Managing Your Profile & Pictures 📸
 
 - **Upload Profile Picture**: Go to **My Profile** in the top navigation menu. Click the camera icon directly on your profile avatar to upload and set your real picture!
@@ -219,11 +218,10 @@ You can register on 9jaKonet easily in just two steps:
   }
 
   // 19. Greetings & Pleasantries
-  if (/^(hello|hi|hey|good morning|good afternoon|good evening|howdy|what's up|greet|yo)/.test(q)) {
+  if (hasWords(['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', "what's up", 'greet', 'yo'])) {
     return `Hello! 👋 Welcome to **9jaKonet**, Nigeria's premier artisan marketplace!
 
 I am KonetBot, your dedicated support assistant. I can help you with:
-
 - 🔍 **Finding Verified Artisans** (Electricians, Plumbers, Carpenters, AC Technicians, etc.)
 - 🛡️ **Paystack Escrow Protection** (How your money stays 100% safe)
 - 📍 **Live Location & Phone GPS Setup**
@@ -233,13 +231,24 @@ I am KonetBot, your dedicated support assistant. I can help you with:
 What would you like to explore today?`;
   }
 
-  // 20. Dynamic Contextual Fallback based on User's Question
+  // 20. Out of Scope Check (so it doesn't give a default answer for completely random things)
+  if (hasWords(['recipe', 'cook', 'premier league', 'football', 'election', 'president', 'write code', 'javascript', 'bug', 'translate', 'movie', 'weather', 'solve', 'bitcoin', 'crypto'])) {
+     return "Hello! I am KonetBot, your dedicated 9jaKonet assistant. I am specialized exclusively in helping you with the **9jaKonet platform** — including finding verified Nigerian artisans, Paystack escrow protection, OTP release codes, artisan registration, and wallet withdrawals. How can I help you with 9jaKonet today?";
+  }
+
+  // 21. Dynamic Contextual Fallback based on User's Question
   const words = q.split(/\s+/).filter(w => w.length > 3);
   const keywordsStr = words.slice(0, 3).join(', ');
+  
+  return `Thank you for asking! As your **9jaKonet** support concierge, I'm here to ensure you have a seamless experience on our platform.
 
-  return `Thanks for asking! Regarding **${keywordsStr || 'your inquiry'}** on 9jaKonet:
+You can ask me about:
 
-- **For Customers**: 9jaKonet connects you with vetted, background-checked Nigerian technicians. All payments are protected in Paystack Escrow and released only after your approval with a 6-digit email OTP.
-- **For Artisans**: You can register your trade, set your rates, accept contracts, and receive 90% net earnings paid directly into any Nigerian bank account.
-- **Need personalized help?** You can reach our dedicated support desk at **info@mooregloballtd.online** or ask me specifically about hiring, escrow, KYC verification, or wallet withdrawals!`;
+- **Hiring Artisans**: How to browse and hire verified plumbers, electricians, AC techs, and carpenters in Lagos, Abuja, and nationwide.
+- **Escrow Security**: How your money is safely locked in Paystack Escrow until you approve the work.
+- **6-Digit OTP Release**: How dual-verification protects both customers and artisans from fraudulent payouts.
+- **Live GPS Traceability**: How our real-time location safeguards home and office visits.
+- **Artisan Payouts**: How verified artisans receive 90% net earnings directly into Nigerian bank accounts.
+
+Please let me know which of these you would like to know more about!`;
 }

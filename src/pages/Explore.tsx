@@ -202,7 +202,7 @@ export default function Explore() {
             <div className="relative w-full sm:w-64">
               <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
               <Input 
-                placeholder="Filter by state or city (e.g. Lagos)..." 
+                placeholder="Where? (State, City, or Friend's Area)..." 
                 className="pl-9 w-full" 
                 value={locationQuery}
                 onChange={(e) => setLocationQuery(e.target.value)}
@@ -222,7 +222,7 @@ export default function Explore() {
           
           {/* Quick Filter Categories */}
           <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-            {['Barber', 'Plumber', 'Electrician', 'Doctor', 'Cleaner', 'Mechanic'].map(cat => (
+            {['AC Technician', 'Tailor', 'Plumber', 'Electrician', 'Cleaner', 'Mechanic', 'Carpenter'].map(cat => (
               <button 
                 key={cat}
                 onClick={() => setSearchQuery(cat)}

@@ -406,15 +406,6 @@ export default function AdminDashboard() {
         paidAt: Date.now()
       });
       
-      // Deduct from artisan's prototype wallet balance since it's paid out
-      try {
-        await updateDoc(doc(db, 'users', withdrawalDoc.userId), {
-          walletBalance: increment(-withdrawalDoc.amount)
-        });
-      } catch(e) {
-        console.error('Failed to deduct wallet balance:', e);
-      }
-
       // Add to transactions log
       await addDoc(collection(db, 'transactions'), {
         userId: withdrawalDoc.userId,

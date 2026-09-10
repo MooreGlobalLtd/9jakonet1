@@ -118,6 +118,7 @@ export interface EscrowContract {
   artisanId: string;
   artisanName: string;
   title: string;
+  location?: string;
   amount: number;
   platformFee?: number;
   artisanPayout?: number;

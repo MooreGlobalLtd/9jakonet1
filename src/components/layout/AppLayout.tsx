@@ -1,13 +1,28 @@
+import { useEffect } from 'react';
 import { Outlet, useLocation, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import KonetBot from '../chat/KonetBot';
 import LiveLocationWatcher from '../security/LiveLocationWatcher';
 import { useAuthStore } from '../../store/authStore';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
+import { updateDoc, doc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 export default function AppLayout() {
   const { user } = useAuthStore();
   const location = useLocation();
+
+  useEffect(() => {
+    // Quick-fix: Automatically correct any corrupted negative wallet balances.
+    // If the system previously double-deducted, reset the local and remote state to 0 so the artisan isn't "in debt".
+    if (user && (user.walletBalance || 0) < 0) {
+      updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
+        .then(() => {
+          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
+        })
+        .catch(err => console.error("Could not correct negative balance", err));
+    }
+  }, [user]);
 
   const showKycPrompt = user && !user.isKycVerified && user?.kyc?.status !== 'verified' && user?.kyc?.status !== 'pending' && location.pathname !== '/verify-kyc';
 

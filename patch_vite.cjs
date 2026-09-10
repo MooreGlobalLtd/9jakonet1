@@ -1,4 +1,6 @@
-import tailwindcss from '@tailwindcss/vite';
+const fs = require('fs');
+let viteStr = fs.readFileSync('vite.config.ts', 'utf8');
+viteStr = `import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
@@ -63,3 +65,5 @@ export default defineConfig(() => {
     },
   };
 });
+`;
+fs.writeFileSync('vite.config.ts', viteStr);

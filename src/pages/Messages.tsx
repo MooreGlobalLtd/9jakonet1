@@ -255,16 +255,20 @@ export default function Messages() {
               {/* Inline Job Creation Form */}
               <div id="quick-job-form" className="hidden border-b border-slate-200 p-4 bg-emerald-50">
                 <h4 className="text-sm font-semibold mb-2">Create New Job Offer</h4>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Input id="job-title-input" placeholder="Job Title (e.g. Fix AC)" className="flex-1 bg-white" />
-                  <Input id="job-amount-input" type="number" min="100" placeholder="Amount (min ₦100)" className="w-36 bg-white" />
+                  <Input id="job-location-input" placeholder="Service Location (e.g. My house, Friend's house, or Ikeja)" className="flex-1 bg-white" defaultValue={user.address || user.state || ''} />
+                  <Input id="job-amount-input" type="number" min="100" placeholder="Amount (min ₦100)" className="w-full sm:w-36 bg-white" />
                   <Button 
                     size="sm"
+                    className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800"
                     onClick={() => {
                       const titleInput = document.getElementById('job-title-input') as HTMLInputElement;
+                      const locationInput = document.getElementById('job-location-input') as HTMLInputElement;
                       const amountInput = document.getElementById('job-amount-input') as HTMLInputElement;
                       
                       const title = titleInput?.value;
+                      const location = locationInput?.value || 'Not specified';
                       const amount = parseInt(amountInput?.value || '0');
                       
                       if (!title) {
@@ -288,6 +292,7 @@ export default function Messages() {
                         artisanId: activeChatDetails.otherUser!.id,
                         artisanName: activeChatDetails.otherUser!.displayName,
                         title,
+                        location,
                         amount,
                         status: 'pending_escrow',
                         createdAt: Date.now()
@@ -300,7 +305,7 @@ export default function Messages() {
                             html: `
                               <h2>New Job Offer!</h2>
                               <p>Hi ${activeChatDetails.otherUser.displayName},</p>
-                              <p><strong>${user.displayName}</strong> just sent you a new job offer for <strong>"${title}"</strong>.</p>
+                              <p><strong>${user.displayName}</strong> just sent you a new job offer for <strong>"${title}"</strong> at <strong>${location}</strong>.</p>
                               <p>The proposed amount is <strong>₦${amount.toLocaleString()}</strong>.</p>
                               <br/>
                               <p><a href="https://connect.mooregloballtd.online/jobs">Log in to view the offer</a> and wait for the escrow to be funded before starting work!</p>
@@ -312,7 +317,7 @@ export default function Messages() {
                         addDoc(collection(db, 'chats', activeChat, 'messages'), {
                           chatId: activeChat,
                           senderId: user.id,
-                          text: `[SYSTEM] Job Offer Created: "${title}" for ₦${amount.toLocaleString()}. The customer is currently funding the Escrow Vault.`,
+                          text: `[SYSTEM] Job Offer Created: "${title}" for ₦${amount.toLocaleString()} at ${location}. The customer is currently funding the Escrow Vault.`,
                           createdAt: Date.now()
                         });
                         
