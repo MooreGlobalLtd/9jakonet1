@@ -13,6 +13,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { motion } from 'framer-motion';
 import { getSmartBotAnswer } from '../../lib/botEngine';
 
 interface ChatMessage {
@@ -231,7 +232,7 @@ export default function KonetBot() {
   };
 
   return (
-    <div id="konetbot-container" className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+    <motion.div drag dragMomentum={false} id="konetbot-container" className="fixed bottom-5 right-5 z-50 flex flex-col items-end" style={{ touchAction: "none" }}>
       {/* Floating Launcher Button */}
       {!isOpen && (
         <div className="relative group">
@@ -444,6 +445,6 @@ export default function KonetBot() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

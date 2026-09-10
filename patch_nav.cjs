@@ -1,13 +1,17 @@
 const fs = require('fs');
+let nav = fs.readFileSync('src/components/layout/Navbar.tsx', 'utf8');
 
-// Patch Navbar.tsx
-let nav = fs.readFileSync('src/components/layout/Navbar.tsx', 'utf-8');
-nav = nav.replace(/user\.role === 'admin'/g, "(user.role === 'admin' || user.email === 'ayorindesamuel705@gmail.com')");
-fs.writeFileSync('src/components/layout/Navbar.tsx', nav);
+// add import
+if (!nav.includes('PWAInstallButton')) {
+  nav = nav.replace(
+    "import { Button } from '../ui/button';",
+    "import { Button } from '../ui/button';\nimport { PWAInstallButton } from '../PWAInstallButton';"
+  );
 
-// Patch App.tsx
-let app = fs.readFileSync('src/App.tsx', 'utf-8');
-app = app.replace(/if \(user\.role !== 'admin'\)/g, "if (user.role !== 'admin' && user.email !== 'ayorindesamuel705@gmail.com')");
-fs.writeFileSync('src/App.tsx', app);
-
-console.log("Patched Navbar and App.tsx!");
+  // insert button
+  nav = nav.replace(
+    '<div className="relative group">',
+    '<PWAInstallButton variant="nav" />\n              <div className="relative group">'
+  );
+  fs.writeFileSync('src/components/layout/Navbar.tsx', nav);
+}

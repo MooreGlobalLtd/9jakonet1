@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/button';
+import { PWAInstallButton } from '../PWAInstallButton';
 import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert, Bell, CheckCircle2 } from 'lucide-react';
 
 export default function Navbar() {
@@ -127,7 +128,8 @@ export default function Navbar() {
               </Link>
               <Link to="/dashboard" className="hover:text-emerald-600">Dashboard</Link>
               
-                            <div className="relative group">
+                            <PWAInstallButton variant="nav" />
+              <div className="relative group">
                 <button 
                   onMouseEnter={markNotifsAsRead}
                   className="relative p-2 text-slate-600 hover:text-emerald-600 hover:bg-slate-100 rounded-full transition-colors flex items-center justify-center"
