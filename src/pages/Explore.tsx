@@ -61,9 +61,17 @@ export default function Explore() {
       },
       (error) => {
         setIsLocating(false);
-        toast.error("Failed to detect location. Please type it manually.");
+        if (error.code === 1) {
+          toast.error("Location permission denied. Please allow it in browser settings.");
+        } else if (error.code === 2) {
+          toast.error("Location unavailable. Please check your device GPS.");
+        } else if (error.code === 3) {
+          toast.error("Location request timed out. Please type it manually.");
+        } else {
+          toast.error("Failed to detect location. Please type it manually.");
+        }
       },
-      { enableHighAccuracy: true, timeout: 5000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
     );
   };
 
@@ -182,32 +190,59 @@ export default function Explore() {
           <h1 className="text-3xl font-bold text-slate-900">Explore Artisans</h1>
           <p className="text-slate-500">Find the perfect professional for your job.</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Input 
-            placeholder="Search by trade (e.g. Electrician)..." 
-            className="w-full sm:w-64" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <div className="flex w-full sm:w-auto gap-2">
-          <div className="relative w-full sm:w-64">
-            <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+        <div className="flex flex-col gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input 
-              placeholder="Filter by state or city (e.g. Lagos, Ikeja)..." 
-              className="pl-9 w-full" 
-              value={locationQuery}
-              onChange={(e) => setLocationQuery(e.target.value)}
+              placeholder="Search by trade (e.g. Barber, Electrician)..." 
+              className="w-full sm:w-64" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
+            <div className="flex w-full sm:w-auto gap-2">
+            <div className="relative w-full sm:w-64">
+              <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <Input 
+                placeholder="Filter by state or city (e.g. Lagos)..." 
+                className="pl-9 w-full" 
+                value={locationQuery}
+                onChange={(e) => setLocationQuery(e.target.value)}
+              />
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={handleDetectLocation} 
+              disabled={isLocating}
+              className="w-10 px-0 shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 bg-white"
+              title="Detect My Location"
+            >
+              {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Navigation className="h-5 w-5" />}
+            </Button>
+            </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={handleDetectLocation} 
-            disabled={isLocating}
-            className="w-10 px-0 shrink-0 text-emerald-600 border-emerald-200 hover:bg-emerald-50 bg-white"
-            title="Detect My Location"
-          >
-            {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Navigation className="h-5 w-5" />}
-          </Button>
+          
+          {/* Quick Filter Categories */}
+          <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+            {['Barber', 'Plumber', 'Electrician', 'Doctor', 'Cleaner', 'Mechanic'].map(cat => (
+              <button 
+                key={cat}
+                onClick={() => setSearchQuery(cat)}
+                className={`text-[10px] sm:text-xs px-2.5 py-1 rounded-full font-medium transition-colors border ${
+                  searchQuery.toLowerCase() === cat.toLowerCase() 
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="text-[10px] sm:text-xs px-2.5 py-1 rounded-full font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors border border-red-100"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
       </div>

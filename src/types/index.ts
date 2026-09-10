@@ -125,4 +125,6 @@ export interface EscrowContract {
   reviewComment?: string;
   status: 'pending_escrow' | 'in_progress' | 'completed' | 'disputed';
   createdAt: number;
+  fundedAt?: number;
+  completedAt?: number;
 }

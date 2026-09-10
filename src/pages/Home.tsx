@@ -19,21 +19,21 @@ const testimonials = [
     role: "Homeowner in Lekki",
     text: "I was always scared of giving artisans money upfront. With the Escrow feature, I finally have peace of mind. The plumber only got paid when my sink was perfectly fixed!",
     rating: 5,
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+    avatar: "https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=150&auto=format&fit=crop&q=80"
   },
   {
     name: "Tunde O.",
     role: "Verified Electrician",
     text: "Since I joined 9jaKonet, I don't argue with clients about payment anymore. Once the job is booked, I know the money is safe. It's changed my business entirely.",
     rating: 5,
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
+    avatar: "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&auto=format&fit=crop&q=80"
   },
   {
     name: "Aisha F.",
     role: "Restaurant Manager",
     text: "When our AC broke down on a Friday night, I found a verified technician here in 10 minutes. The service was professional and the payment process was seamless.",
     rating: 5,
-    avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
+    avatar: "https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=150&auto=format&fit=crop&q=80"
   }
 ];
 

@@ -8,7 +8,7 @@ export function getSmartBotAnswer(userPrompt: string): string {
   const q = userPrompt.toLowerCase().trim();
 
   // 1. Trades: Plumbers
-  if (/plumber|plumbing|pipe|leak|tap|water heater|sink|borehole|water pump|drainage/.test(q)) {
+  if (/plumber|plumbing|pipe|\bleak\b|tap|water heater|sink|borehole|water pump|drainage/.test(q)) {
     return `### Verified Plumbers on 9jaKonet 🔧
 
 Yes! You can hire vetted, experienced plumbers on 9jaKonet across **Lagos (Ikeja, Lekki, Yaba, Surulere, Ikorodu, etc.), Abuja, Port Harcourt, Ibadan**, and all 36 states.
@@ -41,7 +41,7 @@ Looking for quality woodwork? On 9jaKonet, you can hire verified carpenters for:
   }
 
   // 4. Trades: AC & Cooling
-  if (/ac|air condition|refrigerator|fridge|cooling|chiller|gas refill/.test(q)) {
+  if (/\bac\b|air condition|refrigerator|fridge|cooling|chiller|gas refill/.test(q)) {
     return `### AC Technicians & Refrigeration Specialists ❄️
 
 Get rapid, professional cooling and HVAC repairs across Nigeria:
@@ -51,7 +51,7 @@ Get rapid, professional cooling and HVAC repairs across Nigeria:
   }
 
   // 5. Trades: Auto Mechanics
-  if (/mechanic|auto|car repair|brake|engine|panel beater|vulcanizer|spray paint car/.test(q)) {
+  if (/mechanic|\bauto\b|car repair|brake|engine|panel beater|vulcanizer|spray paint car/.test(q)) {
     return `### Auto Mechanics & Diagnostic Specialists 🚗
 
 Find experienced automobile mechanics, auto-electricians, and computer diagnostic technicians near you:
@@ -61,7 +61,7 @@ Find experienced automobile mechanics, auto-electricians, and computer diagnosti
   }
 
   // 6. Trades: Painters, Tilers, Welders, Cleaners
-  if (/paint|tiler|welder|mason|clean|masonry|welding|iron|fumigation|flooring/.test(q)) {
+  if (/painter|painting|tiler|welder|mason|clean|masonry|welding|iron|fumigation|flooring/.test(q)) {
     return `### Verified Artisans Across All Trades 🛠️
 
 We feature verified Nigerian artisans across all core trades:
