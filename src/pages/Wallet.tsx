@@ -95,6 +95,12 @@ export default function Wallet() {
     setResettingBalance(true);
     try {
       await updateDoc(doc(db, 'users', user.id), { walletBalance: 0 });
+      // Also clear pending withdrawals so the calculated balance resets
+      const qW = query(collection(db, 'withdrawals'), where('userId', '==', user.id), where('status', '==', 'pending'));
+      const snapW = await getDocs(qW);
+      for (const wDoc of snapW.docs) {
+        await updateDoc(wDoc.ref, { status: 'rejected' });
+      }
       useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
       alert('✅ Wallet balance has been reset to ₦0!');
     } catch (e: any) {
@@ -313,6 +319,8 @@ export default function Wallet() {
   if (!user) return null;
 
   const isCustomer = user.role === 'customer';
+  const pendingBalance = withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + (w.amount || 0), 0);
+  const displayBalance = isCustomer ? (user.walletBalance || 0) : pendingBalance;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-12">
@@ -338,10 +346,10 @@ export default function Wallet() {
              <p className="text-slate-400 font-medium mb-2">{isCustomer ? 'Active Escrow / Wallet' : 'Available Balance'}</p>
              <div className="flex items-baseline justify-between mb-4">
                <h2 className="text-4xl font-bold tracking-tight">
-                 ₦{(user.walletBalance || 0).toLocaleString()}
+                 ₦{displayBalance.toLocaleString()}
                </h2>
              </div>
-             {(user.walletBalance || 0) > 0 && (
+             {displayBalance > 0 && (
                <div className="mb-4">
                  <Button
                    size="sm"
