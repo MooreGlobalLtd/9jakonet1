@@ -282,6 +282,11 @@ export default function JobsAndEscrow() {
         createdAt: completedAt
       });
 
+      // 3b. Update Artisan's Wallet Balance (Prototype Money)
+      await updateDoc(doc(db, 'users', job.artisanId), {
+        walletBalance: increment(artisanPayout)
+      });
+
       // 4. Update Job status in Firestore
       await updateDoc(doc(db, 'jobs', job.id), {
         status: 'completed',

@@ -324,6 +324,15 @@ export default function AdminDashboard() {
             paidAt: Date.now()
           });
 
+          // Deduct from artisan's prototype wallet balance
+          try {
+            await updateDoc(doc(db, 'users', w.userId), {
+              walletBalance: increment(-w.amount)
+            });
+          } catch(e) {
+            console.error('Failed to deduct wallet balance:', e);
+          }
+
           // Add to transactions log
           await addDoc(collection(db, 'transactions'), {
             userId: w.userId,
@@ -414,7 +423,12 @@ export default function AdminDashboard() {
       const withdrawalDoc = withdrawals.find(w => w.id === withdrawalId);
       if (!withdrawalDoc) return;
 
-      if (!confirm(`Confirm you have sent ₦${withdrawalDoc.amount.toLocaleString()} to ${withdrawalDoc.accountName || 'the artisan'} (${withdrawalDoc.bankName} - ${withdrawalDoc.accountNumber})?`)) {
+      const artisanData = users.find(u => u.id === withdrawalDoc.userId);
+      const displayBank = (withdrawalDoc.bankName === 'Not Set' || withdrawalDoc.bankName === 'N/A') ? artisanData?.bankName || 'Unknown Bank' : withdrawalDoc.bankName;
+      const displayAccount = (withdrawalDoc.accountNumber === 'Not Set' || withdrawalDoc.accountNumber === 'N/A') ? artisanData?.accountNumber || 'Unknown Account' : withdrawalDoc.accountNumber;
+      const displayName = (withdrawalDoc.accountName === withdrawalDoc.artisanName) ? artisanData?.accountName || withdrawalDoc.accountName : withdrawalDoc.accountName;
+      
+      if (!confirm(`Confirm you have sent ₦${withdrawalDoc.amount.toLocaleString()} to ${displayName || 'the artisan'} (${displayBank} - ${displayAccount})?`)) {
         return;
       }
 
@@ -423,6 +437,15 @@ export default function AdminDashboard() {
         transferStatus: 'manual_transfer',
         paidAt: Date.now()
       });
+      
+      // Deduct from artisan's prototype wallet balance since it's paid out
+      try {
+        await updateDoc(doc(db, 'users', withdrawalDoc.userId), {
+          walletBalance: increment(-withdrawalDoc.amount)
+        });
+      } catch(e) {
+        console.error('Failed to deduct wallet balance:', e);
+      }
 
       // Add to transactions log
       await addDoc(collection(db, 'transactions'), {
