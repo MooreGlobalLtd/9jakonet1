@@ -403,7 +403,7 @@ async function startServer() {
   });
 
   // KonetBot AI Assistant Endpoint (Strictly 9jaKonet-scoped)
-  const KONETBOT_SYSTEM_INSTRUCTION = `You are KonetBot, the active and dedicated AI Support Assistant and Concierge for 9jaKonet (https://9jakonet.ng), Nigeria's premier digital marketplace connecting verified artisans with customers.
+  const KONETBOT_SYSTEM_INSTRUCTION = `You are KonetBot, the active and dedicated AI Support Assistant and Concierge for 9jaKonet (https://9jakonet.mooregloballtd.online), Nigeria's premier digital marketplace connecting verified artisans with customers.
 
 YOUR ROLE & TONE:
 - You speak naturally, warmly, empathetically, and conversationally, like a knowledgeable, professional human support specialist.
@@ -448,7 +448,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
 7. Live GPS Location & Field Safety (Active 9jaKonet Feature):
    - To safeguard Nigerian households and artisans during home or office visits, 9jaKonet requires live location/GPS confirmation for active safety and emergency traceability.
    - If a user asks how to turn on location or GPS on their phone for 9jaKonet:
-     * Android: Swipe down Quick Settings from the top of the phone screen and tap Location (📍) to turn it ON. In browser (Chrome), tap the Lock (🔒) icon beside 9jakonet.ng ➔ Permissions ➔ Location ➔ Allow.
+     * Android: Swipe down Quick Settings from the top of the phone screen and tap Location (📍) to turn it ON. In browser (Chrome), tap the Lock (🔒) icon beside 9jakonet.mooregloballtd.online ➔ Permissions ➔ Location ➔ Allow.
      * iPhone (Safari): Open iPhone Settings ➔ Privacy & Security ➔ Location Services ➔ Turn ON. In Safari, tap 'aA' in the address bar ➔ Website Settings ➔ Location ➔ Allow.
      * Explain that their location is encrypted and strictly used to verify job arrival and emergency safety.`;
 
@@ -487,7 +487,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
 
     // 3. Live Location, Phone GPS & Settings Toggle
     if (/location|gps|phone location|toggle|turn on location|trace|map/.test(q)) {
-      return "### Live GPS Location & Phone Activation 📍\n\n**Why Live Location is Required:**\nWhen artisans visit customer homes or offices, active GPS coordinates provide emergency traceability and verify on-site arrival. Your location is encrypted and strictly used for safety.\n\n**How to Turn On Location on Your Phone:**\n\n- **On Android Phones (Samsung, Tecno, Infinix, Xiaomi, etc.)**:\n  1. Swipe down from the top of your screen to open the **Quick Settings** panel.\n  2. Tap the **Location** (📍) icon to switch it ON (turns blue/active).\n  3. At the top of your browser (beside 9jakonet.ng), tap the **Lock (🔒) or Settings icon** ➜ **Site Settings / Permissions** ➜ **Location** ➜ Choose **Allow**.\n\n- **On iPhones (Apple Safari)**:\n  1. Open iPhone **Settings** ➜ **Privacy & Security** ➜ **Location Services** ➜ Turn ON.\n  2. In Safari, tap the **'aA'** icon in the address bar ➜ **Website Settings** ➜ **Location** ➜ Select **Allow**.\n\nOnce turned on, tap **'Re-detect GPS'** on 9jaKonet!";
+      return "### Live GPS Location & Phone Activation 📍\n\n**Why Live Location is Required:**\nWhen artisans visit customer homes or offices, active GPS coordinates provide emergency traceability and verify on-site arrival. Your location is encrypted and strictly used for safety.\n\n**How to Turn On Location on Your Phone:**\n\n- **On Android Phones (Samsung, Tecno, Infinix, Xiaomi, etc.)**:\n  1. Swipe down from the top of your screen to open the **Quick Settings** panel.\n  2. Tap the **Location** (📍) icon to switch it ON (turns blue/active).\n  3. At the top of your browser (beside 9jakonet.mooregloballtd.online), tap the **Lock (🔒) or Settings icon** ➜ **Site Settings / Permissions** ➜ **Location** ➜ Choose **Allow**.\n\n- **On iPhones (Apple Safari)**:\n  1. Open iPhone **Settings** ➜ **Privacy & Security** ➜ **Location Services** ➜ Turn ON.\n  2. In Safari, tap the **'aA'** icon in the address bar ➜ **Website Settings** ➜ **Location** ➜ Select **Allow**.\n\nOnce turned on, tap **'Re-detect GPS'** on 9jaKonet!";
     }
 
     // 4. Paystack Escrow & Payment Security
@@ -582,7 +582,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
       });
 
       // Try candidate models in order, prioritizing flash models for fast, reliable responses
-      const candidateModels = ['gemini-3.1-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash'];
+      const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
       let reply: string | null = null;
 
       for (const model of candidateModels) {
@@ -605,14 +605,14 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
           }
         } catch (modelErr: any) {
           const errStr = modelErr?.message || String(modelErr);
-          console.warn(`[KonetBot] Model ${model} returned: ${errStr.slice(0, 100)}. Trying next model...`);
+          console.log(`[KonetBot] Model ${model} returned: ${errStr.slice(0, 100)}. Trying next model...`);
         }
       }
 
       const finalReply = reply || getFallbackBotReply(trimmedMessage);
       res.json({ success: true, reply: finalReply });
     } catch (error) {
-      console.warn('[KonetBot] Handling request with local 9jaKonet engine:', error);
+      console.log('[KonetBot] Handling request with local 9jaKonet engine:', error);
       const fallbackReply = getFallbackBotReply(trimmedMessage);
       res.json({ success: true, reply: fallbackReply });
     }

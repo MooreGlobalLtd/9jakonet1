@@ -66,6 +66,7 @@ export interface ArtisanProfile {
   ratingAvg: number;
   totalJobsDone: number;
   priceRange: string;
+  portfolioImages?: string[]; // Array of image URLs for past work
 }
 
 export interface Category {
@@ -98,6 +99,8 @@ export interface Chat {
   lastMessage?: string;
   lastMessageTime?: number;
   updatedAt: number;
+  lastSenderId?: string;
+  isRead?: boolean;
 }
 
 export interface Message {

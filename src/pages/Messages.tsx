@@ -93,6 +93,19 @@ export default function Messages() {
     return () => unsubscribe();
   }, [activeChat]);
 
+  useEffect(() => {
+    if (!activeChat || !user) return;
+    
+    // Mark as read if the current user is not the last sender
+    const currentChat = chats.find(c => c.id === activeChat);
+    if (currentChat && currentChat.lastSenderId !== user.id && currentChat.isRead === false) {
+      updateDoc(doc(db, 'chats', activeChat), {
+        isRead: true
+      }).catch(console.error);
+    }
+  }, [activeChat, chats, user]);
+
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !activeChat || !newMessage.trim()) return;
@@ -115,10 +128,14 @@ export default function Messages() {
       });
 
       // Update parent chat document
-      await updateDoc(doc(db, 'chats', activeChat), {
+      const chatRef = doc(db, 'chats', activeChat);
+      await updateDoc(chatRef, {
         lastMessage: msgText,
         lastMessageTime: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        // Simple unread trick: store the ID of the last sender and a flag
+        lastSenderId: user.id,
+        isRead: false
       });
       
       // Send Email Notification
@@ -179,9 +196,14 @@ export default function Messages() {
                   <div className="flex-1 overflow-hidden">
                     <div className="flex justify-between items-baseline">
                       <h3 className="font-semibold text-slate-900 truncate">{chat.otherUser?.displayName || 'Unknown User'}</h3>
-                      {chat.lastMessageTime && (
-                        <span className="text-xs text-slate-500">{new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {chat.lastSenderId !== user.id && chat.isRead === false && (
+                          <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                        )}
+                        {chat.lastMessageTime && (
+                          <span className="text-xs text-slate-500">{new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm text-slate-500 truncate">{chat.lastMessage || 'No messages yet'}</p>
                   </div>

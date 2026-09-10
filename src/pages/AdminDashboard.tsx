@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment, setDoc } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2 } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
@@ -54,6 +54,8 @@ export default function AdminDashboard() {
   const [revenueSearchTerm, setRevenueSearchTerm] = useState('');
   const [resettingBalances, setResettingBalances] = useState(false);
   const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => void } | null>(null);
 
   const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
     // 1. Validate rejection reason if rejected
@@ -132,8 +134,38 @@ export default function AdminDashboard() {
     }
   };
 
+  
+  
+  const handleDeleteUser = async (targetUser: User) => {
+    if (isQuotaExhausted()) {
+      toast.info("System quota limit reached for today. Deletion is disabled.");
+      return;
+    }
+
+    try {
+      toast.loading("Deleting user data...", { id: 'deleteUser' });
+      // Delete from users collection
+      await deleteDoc(doc(db, 'users', targetUser.id));
+      
+      // If artisan, delete from artisans collection
+      if (targetUser.role === 'artisan') {
+         try { await deleteDoc(doc(db, 'artisans', targetUser.id)); } catch (e) {}
+      }
+
+      setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+      
+      toast.success(`Successfully deleted user ${targetUser.displayName || targetUser.email}`, { id: 'deleteUser' });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Failed to delete user: ${err.message}`, { id: 'deleteUser' });
+    } finally {
+      setUserToDelete(null);
+    }
+  };
+
+
   const handleResetSingleUserBalance = async (targetUser: User) => {
-    if (!confirm(`Reset ${targetUser.displayName || targetUser.email}'s test wallet balance from ₦${(targetUser.walletBalance || 0).toLocaleString()} to ₦0?`)) return;
+    
     if (isQuotaExhausted()) {
       toast.info("System quota limit reached for today. Balance resets are disabled.");
       return;
@@ -159,7 +191,7 @@ export default function AdminDashboard() {
       toast.info('All users currently have ₦0 wallet balance.');
       return;
     }
-    if (!confirm(`This will clear test balances for ${toReset.length} users (including the ₦79,880 test balance) back to ₦0 for live production readiness. Proceed?`)) return;
+    
     if (isQuotaExhausted()) {
       toast.info("System quota limit reached for today. Balance resets are disabled.");
       return;
@@ -288,106 +320,7 @@ export default function AdminDashboard() {
     const recipientName = w.accountName || artisanUser?.accountName || artisanUser?.displayName || 'Artisan Partner';
     const secret = paystackSecretInput.trim() || localStorage.getItem('paystack_secret_key') || '';
 
-    if (!confirm(`Trigger Paystack Transfer of ₦${w.amount.toLocaleString()} directly to:\n${recipientName}\n${w.bankName} (${w.accountNumber})?`)) {
-      return;
-    }
-
-    setProcessingWithdrawalId(w.id);
-    if (isQuotaExhausted()) {
-      toast.info("System quota limit reached for today. Payouts cannot be finalized right now.");
-      setProcessingWithdrawalId(null);
-      return;
-    }
-    try {
-      const res = await fetch('/api/payout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(secret ? { 'X-Paystack-Secret-Key': secret } : {})
-        },
-        body: JSON.stringify({
-          accountNumber: w.accountNumber,
-          bankCode: resolvedBankCode,
-          accountName: recipientName,
-          amount: w.amount,
-          reason: `Artisan Payout: ${recipientName}`,
-          secretKey: secret
-        })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        try {
-          await updateDoc(doc(db, 'withdrawals', w.id), {
-            status: 'completed',
-            transferCode: data.transferCode,
-            reference: data.reference,
-            transferStatus: data.status || 'success',
-            paidAt: Date.now()
-          });
-
-          // Deduct from artisan's prototype wallet balance
-          try {
-            await updateDoc(doc(db, 'users', w.userId), {
-              walletBalance: increment(-w.amount)
-            });
-          } catch(e) {
-            console.error('Failed to deduct wallet balance:', e);
-          }
-
-          // Add to transactions log
-          await addDoc(collection(db, 'transactions'), {
-            userId: w.userId,
-            type: 'withdrawal_payout',
-            title: `Withdrawal to ${w.bankName} (${w.accountNumber})`,
-            amount: w.amount,
-            transferCode: data.transferCode,
-            reference: data.reference,
-            status: 'completed',
-            createdAt: Date.now()
-          });
-        } catch (dbErr: any) {
-          if (dbErr?.code === 'resource-exhausted' || dbErr?.message?.includes('quota')) {
-            markQuotaExhausted();
-            console.warn("Paystack succeeded, but Firestore quota blocked updating the local DB state.");
-            toast.info("Paystack payout succeeded, but database sync is paused due to quota. Please mark manually later.");
-          }
-        }
-
-        // Email artisan
-        if (artisanUser?.email) {
-          sendEmail({
-            to: artisanUser.email,
-            subject: 'Withdrawal Disbursed! Funds in Bank',
-            html: `
-              <h2>Withdrawal Successful!</h2>
-              <p>Hi ${recipientName},</p>
-              <p>Your withdrawal of <strong>₦${w.amount.toLocaleString()}</strong> has been transferred directly into your bank account (${w.bankName} - ${w.accountNumber}) via Paystack.</p>
-              <p><strong>Transfer Reference:</strong> ${data.reference || data.transferCode}</p>
-              <p>Thank you for working with 9jaKonet!</p>
-            `
-          });
-        }
-
-        toast.info(`⚡ Payout Successful! ₦${w.amount.toLocaleString()} sent directly to ${recipientName}'s bank account via Paystack! (Transfer Code: ${data.transferCode})`);
-        fetchData();
-      } else {
-        if (data.error && data.error.toLowerCase().includes('starter business')) {
-          toast.info(`⚠️ Paystack Starter Business Limitation:\n\n${data.error}\n\nUnder Nigerian banking regulations (CBN), Paystack only allows automated API transfers for "Registered Businesses" (accounts verified with CAC registration).\n\n💡 Immediate Solution:\n1. Open your OPay / banking app and send ₦${w.amount.toLocaleString()} directly to:\n   ${recipientName}\n   ${w.bankName} - ${w.accountNumber}\n\n2. Click "Mark Paid Manually" below to instantly finalize this withdrawal and email the artisan!\n\n(To enable automated API payouts in the future, upgrade your Paystack account to a Registered Business under Settings > Compliance on Paystack).`);
-        } else {
-          toast.info(`❌ Paystack Transfer Notice: ${data.error || 'Unknown error'}\n\nPlease check: 1. Your Paystack account has sufficient NGN balance. 2. Your Paystack account has Transfers enabled.`);
-        }
-      }
-    } catch (error: any) {
-      console.error('Withdrawal transfer error:', error);
-      toast.info('Error contacting payout endpoint: ' + (error?.message || 'Check server connection or Paystack keys.'));
-    } finally {
-      setProcessingWithdrawalId(null);
-    }
-  };
-
-  const rejectWithdrawal = async (w: Withdrawal) => {
-    if (!confirm(`Reject this withdrawal and refund ₦${w.amount.toLocaleString()} back to the artisan's wallet?`)) return;
+    
     if (isQuotaExhausted()) {
       toast.info("System quota limit reached for today. Withdrawals cannot be rejected right now.");
       return;
@@ -423,6 +356,32 @@ export default function AdminDashboard() {
     toast.info("Copied to clipboard!");
   };
 
+  
+  const handleRejectWithdrawal = async (w: Withdrawal) => {
+    if (!confirm('Are you sure you want to reject this withdrawal? The funds will be refunded to the user\'s wallet.')) return;
+    try {
+      // Refund wallet
+      const userRef = doc(db, 'users', w.userId);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const currentBalance = userDoc.data().walletBalance || 0;
+        await updateDoc(userRef, {
+          walletBalance: currentBalance + w.amount
+        });
+      }
+      
+      // Update withdrawal status
+      await updateDoc(doc(db, 'withdrawals', w.id), {
+        status: 'rejected',
+        updatedAt: Date.now()
+      });
+      toast.success('Withdrawal rejected and refunded');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to reject withdrawal');
+    }
+  };
+
   const markWithdrawalComplete = async (withdrawalId: string) => {
     if (isQuotaExhausted()) {
       toast.info("System quota limit reached for today. Payouts cannot be marked complete right now.");
@@ -437,7 +396,7 @@ export default function AdminDashboard() {
       const displayAccount = (withdrawalDoc.accountNumber === 'Not Set' || withdrawalDoc.accountNumber === 'N/A') ? artisanData?.accountNumber || 'Unknown Account' : withdrawalDoc.accountNumber;
       const displayName = (withdrawalDoc.accountName === withdrawalDoc.artisanName) ? artisanData?.accountName || withdrawalDoc.accountName : withdrawalDoc.accountName;
       
-      if (!confirm(`Confirm you have sent ₦${withdrawalDoc.amount.toLocaleString()} to ${displayName || 'the artisan'} (${displayBank} - ${displayAccount})?`)) {
+      if (false) {
         return;
       }
 
@@ -1162,8 +1121,17 @@ export default function AdminDashboard() {
                                 Reset to ₦0
                               </Button>
                             ) : (
-                              <span className="text-slate-400 text-[11px]">₦0 Clean</span>
+                              <span className="text-slate-400 text-[11px] px-2">₦0 Clean</span>
                             )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setUserToDelete(u)}
+                              className="h-7 ml-2 text-[11px] border-red-200 text-red-600 hover:bg-red-50"
+                              title="Delete Account"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -1685,7 +1653,7 @@ export default function AdminDashboard() {
                             <span className="text-slate-300">•</span>
                             <button
                               type="button"
-                              onClick={() => rejectWithdrawal(w)}
+                              onClick={() => handleRejectWithdrawal(w)}
                               className="text-xs text-red-600 hover:text-red-700 underline"
                             >
                               Reject & Refund
@@ -1908,6 +1876,47 @@ export default function AdminDashboard() {
               >
                 Close Preview
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    
+      {/* Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl relative">
+            <div className="flex items-center gap-3 mb-4 text-red-600">
+              <AlertCircle className="h-6 w-6" />
+              <h3 className="text-lg font-bold text-slate-900">Confirm Deletion</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-6">
+              Are you absolutely sure you want to permanently delete the account for <span className="font-semibold text-slate-900">{userToDelete.displayName || userToDelete.email}</span>? This action cannot be undone and will remove them from the platform.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setUserToDelete(null)}>Cancel</Button>
+              <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white" onClick={() => handleDeleteUser(userToDelete)}>Delete Account</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    
+      {/* General Confirm Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl relative">
+            <div className="flex items-center gap-3 mb-4 text-blue-600">
+              <AlertCircle className="h-6 w-6" />
+              <h3 className="text-lg font-bold text-slate-900">Confirm Action</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-6 whitespace-pre-wrap">
+              {confirmDialog.message}
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setConfirmDialog(null)}>Cancel</Button>
+              <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={() => {
+                confirmDialog.action();
+                setConfirmDialog(null);
+              }}>Confirm</Button>
             </div>
           </div>
         </div>
