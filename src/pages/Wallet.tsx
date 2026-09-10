@@ -383,54 +383,7 @@ export default function Wallet() {
 
           {!isCustomer && (
             <div className="space-y-6">
-              {/* Linked Bank Card for Automatic Escrow Payouts */}
-              <div className={`rounded-2xl p-6 border ${user.accountNumber && user.bankName ? 'bg-emerald-50/70 border-emerald-200' : 'bg-amber-50/70 border-amber-200'}`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                      <Building2 className="w-5 h-5 text-emerald-700" />
-                      Direct Escrow Bank Payout Account
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-1 max-w-lg">
-                      When a customer approves a job and releases escrow funds, <strong>90% of the funds are automatically transferred directly into your bank account</strong> via Paystack.
-                    </p>
-                  </div>
-                  {user.accountNumber && user.bankName ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      Payouts Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                      Not Linked
-                    </span>
-                  )}
-                </div>
-
-                {user.accountNumber && user.bankName ? (
-                  <div className="mt-4 pt-3 border-t border-emerald-200/60 grid grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <span className="text-slate-500 block">Bank</span>
-                      <span className="font-semibold text-slate-900">{user.bankName}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block">Account Number</span>
-                      <span className="font-mono font-semibold text-slate-900">{user.accountNumber}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block">Account Holder</span>
-                      <span className="font-medium text-emerald-800">{user.accountName || user.displayName}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-amber-700 mt-3 font-medium">
-                    ⚠️ Enter your bank details below and click &quot;Save Bank for Direct Payouts&quot; to enable instant automated payments to your account!
-                  </p>
-                )}
-              </div>
-
-                    {/* Bank Details Form */}
+              {/* Bank Details Form */}
       <div className="grid md:grid-cols-1 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <h3 className="text-xl font-bold text-slate-900 mb-6">Direct Escrow Payout Bank</h3>
@@ -454,15 +407,15 @@ export default function Wallet() {
                           value={bankName}
                           onChange={(e) => {
                             setBankName(e.target.value);
-                            const found = NIGERIAN_BANKS.find(b => b === e.target.value);
-   if (found) setSelectedBankCode('');
+                            const found = banks.find(b => b.name === e.target.value);
+                            if (found) setSelectedBankCode(found.code);
                           }}
                           required
                         >
                           <option value="">Select Bank...</option>
-                          {NIGERIAN_BANKS.map((b, i) => (
-      <option key={i} value={b}>{b}</option>
-   ))}
+                          {banks.map((b, i) => (
+                            <option key={i} value={b.name}>{b.name}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
