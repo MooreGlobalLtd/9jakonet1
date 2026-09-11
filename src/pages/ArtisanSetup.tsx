@@ -41,6 +41,7 @@ export default function ArtisanSetup() {
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +60,8 @@ export default function ArtisanSetup() {
             serviceAreas: [fullLocation],
             state,
             city,
-            address
+            address,
+            whatsappNumber: whatsapp
           }, { merge: true });
         } catch (error: any) {
           if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
@@ -137,6 +139,18 @@ export default function ArtisanSetup() {
                   placeholder="e.g. 5"
                   value={exp}
                   onChange={(e) => setExp(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">WhatsApp Number</label>
+                <p className="text-xs text-slate-500 mb-2">This is only shown to customers AFTER they hire you and create an active job offer, protecting your privacy.</p>
+                <Input 
+                  type="tel" 
+                  required 
+                  placeholder="e.g. 08012345678"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
                 />
               </div>
             </div>

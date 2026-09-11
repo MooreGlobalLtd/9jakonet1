@@ -36,23 +36,57 @@ export default function Explore() {
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
-          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
-          const data = await res.json();
-          
           setIsLocating(false);
           let detectedLocation = '';
+          const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
           
-          if (data.principalSubdivision) {
-             detectedLocation = data.principalSubdivision.replace(' State', '');
-          } else if (data.city) {
-             detectedLocation = data.city;
+          if (googleMapsApiKey) {
+            try {
+              // Use Google Maps Geocoding API for exact street level accuracy
+              const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleMapsApiKey}`);
+              const data = await res.json();
+              
+              if (data.results && data.results.length > 0) {
+                detectedLocation = data.results[0].formatted_address;
+                detectedLocation = detectedLocation.replace(', Nigeria', '');
+              } else {
+                console.warn("Google Maps Geocoding failed or returned no results:", data);
+              }
+            } catch (err) {
+              console.error("Google Maps API error:", err);
+            }
+          } 
+          
+          if (!detectedLocation) {
+            try {
+              // Fallback to ArcGIS Geocoding if API key is not set OR if Google Maps failed (e.g., billing not enabled)
+              const res = await fetch(`https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?location=${longitude},${latitude}&outSR=4326&f=json`);
+              const data = await res.json();
+              
+              if (data && data.address) {
+                const addr = data.address;
+                const parts = [];
+                
+                if (addr.PlaceName) parts.push(addr.PlaceName);
+                else if (addr.Address) parts.push(addr.Address);
+                
+                if (addr.Neighborhood) parts.push(addr.Neighborhood);
+                else if (addr.City) parts.push(addr.City);
+                
+                if (addr.Region) parts.push(addr.Region);
+                
+                detectedLocation = [...new Set(parts.filter(Boolean))].join(', ');
+              }
+            } catch (err) {
+              console.error("ArcGIS Geocoding error:", err);
+            }
           }
           
           if (detectedLocation) {
              setLocationQuery(detectedLocation);
              toast.success(`Location detected: ${detectedLocation}`);
           } else {
-             toast.error("Could not automatically determine state/city.");
+             toast.error("Could not automatically determine your specific location.");
           }
         } catch(err) {
           setIsLocating(false);
@@ -71,7 +105,7 @@ export default function Explore() {
           toast.error("Failed to detect location. Please type it manually.");
         }
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   };
 
@@ -115,10 +149,24 @@ export default function Explore() {
     }
     
     if (locationQuery) {
-      filtered = filtered.filter(a => 
-        a.serviceAreas.some(area => area.toLowerCase().includes(locationQuery.toLowerCase())) ||
-        (a.user.state && a.user.state.toLowerCase().includes(locationQuery.toLowerCase()))
-      );
+      const locQ = locationQuery.toLowerCase();
+      const locWords = locQ.split(/[,\s]+/).filter(w => w.length > 2);
+      
+      filtered = filtered.filter(a => {
+        const state = (a.user.state || "").toLowerCase();
+        const areas = a.serviceAreas.map(area => area.toLowerCase());
+        
+        // 1. Two-way check (e.g., does "Ikeja" include "Ikeja, Lagos" or vice-versa)
+        const hasDirectMatch = areas.some(area => area.includes(locQ) || locQ.includes(area)) || 
+                               (state && (state.includes(locQ) || locQ.includes(state)));
+                               
+        if (hasDirectMatch) return true;
+        
+        // 2. Word-level check (if location is "Oladipupo Kuku St, Ikeja", match any artisan who serves "Ikeja")
+        return locWords.some(word => 
+           areas.some(area => area.includes(word)) || (state && state.includes(word))
+        );
+      });
     }
     
     setArtisans(filtered);

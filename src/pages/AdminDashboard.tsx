@@ -56,19 +56,27 @@ export default function AdminDashboard() {
   const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => void } | null>(null);
+  const [promptDialog, setPromptDialog] = useState<{ message: string; defaultText: string; action: (value: string) => void } | null>(null);
 
   const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
-    // 1. Validate rejection reason if rejected
-    let rejectReason = '';
     if (newStatus === 'rejected') {
-      const reason = prompt("Please enter the reason for declining this KYC:", "Unclear document photo or mismatched selfie");
-      if (reason === null) return;
-      if (!reason.trim()) {
-        toast.info("You must provide a reason for declining.");
-        return;
-      }
-      rejectReason = reason.trim();
+      setPromptDialog({
+        message: "Please enter the reason for declining this KYC:",
+        defaultText: "Unclear document photo or mismatched selfie",
+        action: async (reason) => {
+          if (!reason.trim()) {
+            toast.info("You must provide a reason for declining.");
+            return;
+          }
+          await processKycUpdate(userId, newStatus, reason.trim());
+        }
+      });
+      return;
     }
+    await processKycUpdate(userId, newStatus, '');
+  };
+
+  const processKycUpdate = async (userId: string, newStatus: 'verified' | 'rejected', rejectReason: string) => {
 
     // 2. Prepare payload
     const payload = {
@@ -163,6 +171,43 @@ export default function AdminDashboard() {
     }
   };
 
+
+  const handleRevokeAdmin = async (targetUser: User) => {
+    setConfirmDialog({
+      message: `Are you sure you want to revoke Admin rights from ${targetUser.displayName || targetUser.email}?`,
+      action: async () => {
+        try {
+          const originalRole = artisans.some(a => a.userId === targetUser.id) ? 'artisan' : 'customer';
+          await updateDoc(doc(db, 'users', targetUser.id), {
+            role: originalRole
+          });
+          setUsers(users.map(u => u.id === targetUser.id ? { ...u, role: originalRole } : u));
+          toast.success(`${targetUser.displayName || targetUser.email} is no longer an Admin.`);
+        } catch (err) {
+          console.error("Error revoking admin:", err);
+          toast.error("Failed to revoke admin rights.");
+        }
+      }
+    });
+  };
+
+  const handleMakeAdmin = async (targetUser: User) => {
+    setConfirmDialog({
+      message: `Are you sure you want to promote ${targetUser.displayName || targetUser.email} to Admin?`,
+      action: async () => {
+        try {
+          await updateDoc(doc(db, 'users', targetUser.id), {
+            role: 'admin'
+          });
+          setUsers(users.map(u => u.id === targetUser.id ? { ...u, role: 'admin' } : u));
+          toast.success(`${targetUser.displayName || targetUser.email} is now an Admin.`);
+        } catch (err) {
+          console.error("Error promoting user:", err);
+          toast.error("Failed to promote user to Admin.");
+        }
+      }
+    });
+  };
 
   const handleResetSingleUserBalance = async (targetUser: User) => {
     
@@ -358,28 +403,32 @@ export default function AdminDashboard() {
 
   
   const handleRejectWithdrawal = async (w: Withdrawal) => {
-    if (!confirm('Are you sure you want to reject this withdrawal? The funds will be refunded to the user\'s wallet.')) return;
-    try {
-      // Refund wallet
-      const userRef = doc(db, 'users', w.userId);
-      const userDoc = await getDoc(userRef);
-      if (userDoc.exists()) {
-        const currentBalance = userDoc.data().walletBalance || 0;
-        await updateDoc(userRef, {
-          walletBalance: currentBalance + w.amount
-        });
+    setConfirmDialog({
+      message: 'Are you sure you want to reject this withdrawal? The funds will be refunded to the user\'s wallet.',
+      action: async () => {
+        try {
+          // Refund wallet
+          const userRef = doc(db, 'users', w.userId);
+          const userDoc = await getDoc(userRef);
+          if (userDoc.exists()) {
+            const currentBalance = userDoc.data().walletBalance || 0;
+            await updateDoc(userRef, {
+              walletBalance: currentBalance + w.amount
+            });
+          }
+          
+          // Update withdrawal status
+          await updateDoc(doc(db, 'withdrawals', w.id), {
+            status: 'rejected',
+            updatedAt: Date.now()
+          });
+          toast.success('Withdrawal rejected and refunded');
+        } catch (err) {
+          console.error(err);
+          toast.error('Failed to reject withdrawal');
+        }
       }
-      
-      // Update withdrawal status
-      await updateDoc(doc(db, 'withdrawals', w.id), {
-        status: 'rejected',
-        updatedAt: Date.now()
-      });
-      toast.success('Withdrawal rejected and refunded');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to reject withdrawal');
-    }
+    });
   };
 
   const markWithdrawalComplete = async (withdrawalId: string) => {
@@ -1102,6 +1151,27 @@ export default function AdminDashboard() {
                             {formatDateTime(u.createdAt)}
                           </td>
                           <td className="px-4 py-3 text-right">
+                            {u.role !== 'admin' && isSuperAdmin && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleMakeAdmin(u)}
+                                className="h-7 text-[11px] border-purple-200 text-purple-700 hover:bg-purple-50 mr-2"
+                              >
+                                Make Admin
+                              </Button>
+                            )}
+                            {u.role === 'admin' && isSuperAdmin && u.email !== user?.email && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRevokeAdmin(u)}
+                                className="h-7 text-[11px] border-orange-200 text-orange-700 hover:bg-orange-50 mr-2"
+                                title="Demote back to normal user"
+                              >
+                                Revoke Admin
+                              </Button>
+                            )}
                             {(u.walletBalance || 0) > 0 ? (
                               <Button
                                 size="sm"
@@ -1686,6 +1756,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Paystack Gateway Configuration */}
+        {isSuperAdmin && (
         <Card className="md:col-span-2 border-emerald-200">
           <CardHeader className="bg-emerald-50/50 border-b border-emerald-100 pb-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1809,6 +1880,7 @@ export default function AdminDashboard() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* KYC Document & Selfie Inspection Modal */}

@@ -328,7 +328,7 @@ export default function Home() {
                 The safest way to hire verified artisans in Nigeria. Zero risk, total trust.
               </p>
               <div className="flex gap-4">
-                <a href="https://instagram.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">
+                <a href="https://www.instagram.com/9jakonet?stkn=dXN6Z29sczZucm03&utm_source=qr" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">
                   <Instagram className="h-5 w-5" />
                 </a>
                 <a href="https://twitter.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">

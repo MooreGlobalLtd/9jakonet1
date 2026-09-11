@@ -100,8 +100,15 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md">
       <div className="container mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link to="/" onClick={closeMenu} className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
-            <Wrench className="h-5 w-5" />
+          <div className="flex-shrink-0 w-8 h-8">
+            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-sm">
+              <path d="M60 15 L20 30 L20 60 C20 85 50 100 60 105 C70 100 100 85 100 60 L100 30 Z" fill="none" stroke="#10b981" strokeWidth="12" strokeLinejoin="round" />
+              <g transform="translate(30, 26) scale(0.5)">
+                <path d="M65 30 A 20 20 0 1 1 45 50 A 20 20 0 0 1 65 30 Z" fill="none" stroke="#f59e0b" strokeWidth="18" />
+                <path d="M85 50 L85 85 A 20 20 0 0 1 45 85" fill="none" stroke="#f59e0b" strokeWidth="18" strokeLinecap="round" />
+                <circle cx="85" cy="30" r="16" fill="#10b981" />
+              </g>
+            </svg>
           </div>
           <span className="text-lg font-bold tracking-tight text-slate-900">9jaKonet <span className="text-emerald-600">NG</span></span>
         </Link>
@@ -114,7 +121,10 @@ export default function Navbar() {
           {user ? (
             <div className="flex items-center gap-4">
               {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'info@mooregloballtd.online')) && (
-                <Link to="/admin" className="font-semibold text-amber-600 hover:text-amber-700">Admin Panel</Link>
+                <>
+                  <Link to="/admin" className="font-semibold text-amber-600 hover:text-amber-700">Admin Panel</Link>
+                  <a href="/9jakonet_official_logo.png" download className="text-amber-600 hover:text-amber-700 font-bold ml-4" title="Download Official Logo">⬇ Logo</a>
+                </>
               )}
               
               <Link to="/jobs" className="hover:text-emerald-600">Jobs & Escrow</Link>
@@ -257,9 +267,14 @@ export default function Navbar() {
           {user ? (
             <div className="space-y-2 pt-2 border-t border-slate-100">
               {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'info@mooregloballtd.online')) && (
-                <Link to="/admin" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-semibold text-amber-600 hover:bg-amber-50">
-                  Admin Panel
-                </Link>
+                <>
+                  <Link to="/admin" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-semibold text-amber-600 hover:bg-amber-50">
+                    Admin Panel
+                  </Link>
+                  <a href="/9jakonet_official_logo.png" download onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-semibold text-amber-600 hover:bg-amber-50">
+                    ⬇ Download Logo (PNG)
+                  </a>
+                </>
               )}
               <Link to="/jobs" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Jobs & Escrow

@@ -1,17 +1,14 @@
 const fs = require('fs');
-let nav = fs.readFileSync('src/components/layout/Navbar.tsx', 'utf8');
+let code = fs.readFileSync('src/components/layout/Navbar.tsx', 'utf8');
 
-// add import
-if (!nav.includes('PWAInstallButton')) {
-  nav = nav.replace(
-    "import { Button } from '../ui/button';",
-    "import { Button } from '../ui/button';\nimport { PWAInstallButton } from '../PWAInstallButton';"
-  );
+const targetMenu = `          <Link to="/explore" className="hover:text-emerald-600">Explore</Link>`;
+const replacementMenu = `          <Link to="/explore" className="hover:text-emerald-600">Explore</Link>
+          <a href="/9jakonet_logo.svg" download className="text-amber-600 hover:text-amber-700 font-bold ml-4">⬇ Download Logo</a>`;
 
-  // insert button
-  nav = nav.replace(
-    '<div className="relative group">',
-    '<PWAInstallButton variant="nav" />\n              <div className="relative group">'
-  );
-  fs.writeFileSync('src/components/layout/Navbar.tsx', nav);
+if(code.includes(targetMenu) && !code.includes('Download Logo')) {
+  code = code.replace(targetMenu, replacementMenu);
+  fs.writeFileSync('src/components/layout/Navbar.tsx', code);
+  console.log("Navbar patched with download link");
+} else {
+  console.log("Navbar already has link or target not found");
 }

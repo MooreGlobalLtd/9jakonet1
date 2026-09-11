@@ -67,6 +67,7 @@ export interface ArtisanProfile {
   totalJobsDone: number;
   priceRange: string;
   portfolioImages?: string[]; // Array of image URLs for past work
+  whatsappNumber?: string;
 }
 
 export interface Category {

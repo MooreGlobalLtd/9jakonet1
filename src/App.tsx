@@ -8,6 +8,7 @@ import { Toaster } from 'sonner';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import AppLayout from './components/layout/AppLayout';
+import LogoPreview from './pages/LogoPreview';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="register" element={<Register />} />
           <Route path="explore" element={<Explore />} />
           <Route path="terms" element={<Terms />} />
+          <Route path="logo-preview" element={<LogoPreview />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="escrow-policy" element={<EscrowPolicy />} />
           

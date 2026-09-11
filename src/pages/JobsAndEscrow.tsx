@@ -173,6 +173,25 @@ export default function JobsAndEscrow() {
 
   // Step 1: When customer clicks "Release Funds", generate 6-digit OTP and send to their email
   
+  const handleWhatsApp = async (artisanId: string) => {
+    try {
+      const docRef = await getDoc(doc(db, 'artisans', artisanId));
+      if (docRef.exists()) {
+        const data = docRef.data();
+        if (data.whatsappNumber) {
+          window.open(`https://wa.me/${data.whatsappNumber.replace(/\D/g, '')}`, '_blank');
+        } else {
+          toast.error("This artisan has not provided a WhatsApp number.");
+        }
+      } else {
+        toast.error("Artisan profile not found.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Error fetching WhatsApp contact.");
+    }
+  };
+
   const handleRaiseDispute = async (job: EscrowContract) => {
     if (window.confirm("Are you sure you want to raise a dispute? Escrow funds will be locked until 9jaKonet Admin resolves the issue.")) {
       try {
@@ -546,9 +565,19 @@ export default function JobsAndEscrow() {
                           <ShieldCheck className="h-3.5 w-3.5" />
                           Escrow Secured in Vault
                         </div>
+                        <div className="flex gap-2 w-full md:w-auto mt-1 mb-1">
+                          <Button 
+                            variant="outline"
+                            onClick={() => handleWhatsApp(job.artisanId)} 
+                            className="flex-1 bg-green-50 border-green-200 text-green-700 hover:bg-green-100 hover:text-green-800 font-semibold shadow-sm h-9"
+                          >
+                            <MessageCircle className="h-4 w-4 mr-2" />
+                            WhatsApp
+                          </Button>
+                        </div>
                         <Button 
                           onClick={() => initiateReleaseOtp(job)} 
-                          className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+                          className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm h-10"
                         >
                           Release Funds to Artisan
                         </Button>
