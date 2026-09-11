@@ -24,6 +24,7 @@ import Wallet from './pages/Wallet';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import EscrowPolicy from './pages/EscrowPolicy';
+import PromoTrailer from './pages/PromoTrailer';
 import VerificationKYC from './pages/VerificationKYC';
 import { PWAInstallButton } from './components/PWAInstallButton';
 
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="explore" element={<Explore />} />
           <Route path="terms" element={<Terms />} />
           <Route path="logo-preview" element={<LogoPreview />} />
+          <Route path="promo" element={<PromoTrailer />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="escrow-policy" element={<EscrowPolicy />} />
           

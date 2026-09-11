@@ -6,7 +6,7 @@ import { EscrowContract, ArtisanProfile } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight, MapPin } from 'lucide-react';
+import { MessageCircle, ShieldCheck, Banknote, CheckCircle, Clock, Star, KeyRound, AlertCircle, RefreshCw, X, ArrowRight, MapPin } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
@@ -510,7 +510,7 @@ export default function JobsAndEscrow() {
                       {job.status === 'pending_escrow' && <Clock className="h-3 w-3 text-amber-500" />}
                       {job.status === 'in_progress' && <Clock className="h-3 w-3 text-blue-500" />}
                       {job.status === 'completed' && <CheckCircle className="h-3 w-3 text-emerald-500" />}
-                      {job.status.replace('_', ' ')}
+                      {(job.status || 'unknown').replace('_', ' ')}
                     </div>
                   </div>
 

@@ -38,7 +38,7 @@ export default function Explore() {
           const { latitude, longitude } = position.coords;
           setIsLocating(false);
           let detectedLocation = '';
-          const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+          const googleMapsApiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY;
           
           if (googleMapsApiKey) {
             try {

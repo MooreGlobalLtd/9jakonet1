@@ -17,15 +17,15 @@ export default function LogoPreview() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     const data = (new XMLSerializer()).serializeToString(svgElement);
-    const DOMURL = window.URL || window.webkitURL || window;
+    
     
     const img = new Image();
     const svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
-    const url = DOMURL.createObjectURL(svgBlob);
+    const url = URL.createObjectURL(svgBlob);
     
     img.onload = function () {
       ctx.drawImage(img, 0, 0, 1024, 1024);
-      DOMURL.revokeObjectURL(url);
+      URL.revokeObjectURL(url);
       
       const imgURI = canvas
           .toDataURL('image/png')
