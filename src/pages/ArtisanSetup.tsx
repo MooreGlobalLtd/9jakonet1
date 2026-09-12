@@ -30,18 +30,19 @@ const POPULAR_TRADES = [
 ];
 
 export default function ArtisanSetup() {
-  const { user, init } = useAuthStore();
+  const { user, artisanProfile, init } = useAuthStore();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   
-  const [trade, setTrade] = useState('');
-  const [exp, setExp] = useState('');
+  const [trade, setTrade] = useState(artisanProfile?.tradeCategory || '');
+  const [bio, setBio] = useState(artisanProfile?.bio || '');
+  const [exp, setExp] = useState(artisanProfile?.yearsExp?.toString() || '');
   
   // Location states
-  const [state, setState] = useState('');
-  const [city, setCity] = useState('');
-  const [address, setAddress] = useState('');
-  const [whatsapp, setWhatsapp] = useState('');
+  const [state, setState] = useState((artisanProfile as any)?.state || '');
+  const [city, setCity] = useState((artisanProfile as any)?.city || '');
+  const [address, setAddress] = useState((artisanProfile as any)?.address || '');
+  const [whatsapp, setWhatsapp] = useState(artisanProfile?.whatsappNumber || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +62,8 @@ export default function ArtisanSetup() {
             state,
             city,
             address,
-            whatsappNumber: whatsapp
+            whatsappNumber: whatsapp,
+            bio: bio
           }, { merge: true });
         } catch (error: any) {
           if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
@@ -139,6 +141,19 @@ export default function ArtisanSetup() {
                   placeholder="e.g. 5"
                   value={exp}
                   onChange={(e) => setExp(e.target.value)}
+                />
+              </div>
+
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">About Me / Bio</label>
+                <textarea 
+                  required
+                  rows={4}
+                  placeholder="Tell customers a bit about your experience, your work ethic, and why they should hire you..."
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
                 />
               </div>
 
