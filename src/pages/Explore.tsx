@@ -124,7 +124,7 @@ export default function Explore() {
           const profile = doc.data() as ArtisanProfile;
           const user = usersMap.get(profile.userId || doc.id);
           return { ...profile, userId: profile.userId || doc.id, user };
-        }).filter(a => a.user && a.user.isKycVerified === true); // Only show if user exists AND is KYC verified
+        }).filter(a => a.user && a.verificationStatus === 'verified'); // STRICTLY only show if artisan profile is verified
 
         setAllArtisans(artisanList);
         setArtisans(artisanList);
