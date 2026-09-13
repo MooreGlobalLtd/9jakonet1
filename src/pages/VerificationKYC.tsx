@@ -616,7 +616,7 @@ export default function VerificationKYC() {
               <Input
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Babatunde Samuel Adebayo"
+                placeholder="e.g. Mark Joe"
                 required
               />
             </div>

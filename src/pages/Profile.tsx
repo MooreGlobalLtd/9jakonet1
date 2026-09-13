@@ -374,7 +374,7 @@ export default function Profile() {
                 Full Name <span className="text-red-500">*</span>
               </label>
               <Input 
-                placeholder="e.g. Samuel Ayorinde"
+                placeholder="e.g. Mark Joe"
                 value={displayName}
                 onChange={(e) => {
                   setDisplayName(e.target.value);

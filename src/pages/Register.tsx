@@ -267,7 +267,7 @@ export default function Register() {
                 <UserIcon className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input 
                   type="text"
-                  placeholder="e.g. Samuel Ayorinde"
+                  placeholder="e.g. Mark Joe"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="pl-9 h-10 text-sm"
