@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const response = await resend.emails.send({
-      from: '9jaKonet <info@mooregloballtd.online>',
+      from: '9jaKonet <noreply@9jakonet.com>',
       to: Array.isArray(to) ? to : [to],
       subject: subject,
       html: html,
