@@ -121,32 +121,45 @@ export default function Profile() {
 
   
   const handlePortfolioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || user.role !== 'artisan') return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || user.role !== 'artisan') return;
 
-    if (portfolioImages.length >= 6) {
-      setErrorMessage('You can only upload a maximum of 6 portfolio images.');
+    if (portfolioImages.length >= 10) {
+      setErrorMessage('You can only upload a maximum of 10 portfolio images.');
       return;
+    }
+
+    const availableSlots = 10 - portfolioImages.length;
+    const filesToUpload = Array.from(files).slice(0, availableSlots);
+
+    if (files.length > availableSlots) {
+      toast.info(`Only ${availableSlots} more image(s) can be uploaded. Extra files were ignored.`);
     }
 
     setPortfolioUploading(true);
     setErrorMessage('');
+    
     try {
-      const compressed = await compressImageFile(file, { maxDimension: 800, quality: 0.85 });
-      const cloudinaryUrl = await uploadToCloudinary(compressed);
+      const uploadedUrls = [];
+      for (const file of filesToUpload) {
+        const compressed = await compressImageFile(file, { maxDimension: 800, quality: 0.85 });
+        const cloudinaryUrl = await uploadToCloudinary(compressed);
+        uploadedUrls.push(cloudinaryUrl);
+      }
       
-      const newImages = [...portfolioImages, cloudinaryUrl];
+      const newImages = [...portfolioImages, ...uploadedUrls];
       setPortfolioImages(newImages);
 
       if (!isQuotaExhausted()) {
         await updateDoc(doc(db, 'artisans', user.id), { portfolioImages: newImages }).catch(e => console.warn(e));
       }
-      setSuccessMessage('Portfolio image added successfully!');
+      setSuccessMessage('Portfolio images added successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err: any) {
-      setErrorMessage('Failed to upload portfolio image.');
+      setErrorMessage('Failed to upload some portfolio images.');
     } finally {
       setPortfolioUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -338,12 +351,12 @@ export default function Profile() {
 
                 {user.role === 'artisan' && artisanProfile && (
                   <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    artisanProfile.verificationStatus === 'verified'
+                    artisanProfile.verificationStatus === 'verified' || user.isKycVerified || user.kyc?.status === 'verified'
                       ? 'bg-green-100 text-green-800 border border-green-200'
                       : 'bg-amber-100 text-amber-800 border border-amber-200'
                   }`}>
                     <Shield className="h-3 w-3" />
-                    {artisanProfile.verificationStatus === 'verified' ? 'Verified Artisan' : 'Verification Pending'}
+                    {artisanProfile.verificationStatus === 'verified' || user.isKycVerified || user.kyc?.status === 'verified' ? 'Verified Artisan' : 'Verification Pending'}
                   </span>
                 )}
               </div>
@@ -515,13 +528,14 @@ export default function Profile() {
                 </div>
               ))}
 
-              {portfolioImages.length < 6 && (
+              {portfolioImages.length < 10 && (
                 <div className="aspect-square">
                   <input 
                     type="file" 
                     id="portfolio-upload" 
                     accept="image/*" 
                     className="hidden" 
+                    multiple
                     onChange={handlePortfolioUpload} 
                     disabled={portfolioUploading}
                   />

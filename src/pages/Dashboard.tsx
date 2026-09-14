@@ -194,8 +194,8 @@ export default function Dashboard() {
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-2">
                     <span>Verification</span>
-                    <span className={`font-medium ${artisanProfile.verificationStatus === 'verified' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {artisanProfile.verificationStatus}
+                    <span className={`font-medium ${artisanProfile.verificationStatus === 'verified' || user.isKycVerified || user.kyc?.status === 'verified' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {artisanProfile.verificationStatus === 'verified' || user.isKycVerified || user.kyc?.status === 'verified' ? 'Verified' : 'Pending'}
                     </span>
                   </div>
                   <div className="flex justify-between pb-2">

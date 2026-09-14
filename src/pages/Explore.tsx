@@ -115,19 +115,48 @@ export default function Explore() {
       setLoading(true);
       try {
         const artisanSnap = await getDocs(collection(db, 'artisans'));
-        const userSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'artisan')));
+        const userSnap = await getDocs(collection(db, 'users'));
         
         const usersMap = new Map();
         userSnap.docs.forEach(doc => usersMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
-        const artisanList = artisanSnap.docs.map(doc => {
-          const profile = doc.data() as ArtisanProfile;
-          const user = usersMap.get(profile.userId || doc.id);
-          return { ...profile, userId: profile.userId || doc.id, user };
-        }).filter(a => a.user && a.verificationStatus === 'verified'); // STRICTLY only show if artisan profile is verified
+        const artisanDocs = artisanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const synthesizedArtisans: any[] = [];
 
-        setAllArtisans(artisanList);
-        setArtisans(artisanList);
+        // 1. Process all explicitly created artisan profiles
+        artisanDocs.forEach(profile => {
+          const user = usersMap.get(profile.userId || profile.id);
+          if (user) {
+            synthesizedArtisans.push({ ...profile, userId: profile.userId || profile.id, user });
+            // Mark this user as processed
+            user._artisanProcessed = true;
+          }
+        });
+
+        // 2. Process any users who signed up as 'artisan' but haven't created a profile document yet
+        usersMap.forEach((user, userId) => {
+          if (user.role === 'artisan' && !user._artisanProcessed) {
+            synthesizedArtisans.push({
+              id: userId,
+              userId: userId,
+              tradeCategory: 'Professional Artisan',
+              yearsExp: 0,
+              ratingAvg: 0,
+              reviewsCount: 0,
+              serviceAreas: [],
+              verificationStatus: user.isKycVerified || user.kyc?.status === 'verified' ? 'verified' : 'pending',
+              user: user
+            });
+          }
+        });
+
+        const verifiedArtisans = synthesizedArtisans.filter(a => {
+          if (!a.user) return false;
+          return a.verificationStatus === 'verified' || a.user.isKycVerified || a.user.kyc?.status === 'verified';
+        });
+
+        setAllArtisans(verifiedArtisans);
+        setArtisans(verifiedArtisans);
       } catch (error) {
         console.error("Error fetching artisans", error);
       } finally {

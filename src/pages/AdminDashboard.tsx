@@ -101,6 +101,21 @@ export default function AdminDashboard() {
       
       // Wrap setDoc in a 5-second timeout to catch hung connections
       const writePromise = setDoc(doc(db, 'users', userId), payload, { merge: true });
+      
+      // Also optimistically try to update their artisan profile verification status if they have one
+      const targetUser = users.find(u => u.id === userId);
+      if (targetUser?.role === 'artisan' || artisans.find(a => a.userId === userId || a.id === userId)) {
+        try {
+          const artisanId = artisans.find(a => a.userId === userId || a.id === userId)?.id || userId;
+          setDoc(doc(db, 'artisans', artisanId), { verificationStatus: newStatus }, { merge: true }).catch(console.error);
+          
+          // Optimistically update local artisans state
+          setArtisans(prev => prev.map(a => (a.userId === userId || a.id === userId) ? { ...a, verificationStatus: newStatus } as any : a));
+        } catch (e) {
+          console.error("Failed to update artisan profile verification status", e);
+        }
+      }
+
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("FIREBASE_TIMEOUT")), 5000));
       
       await Promise.race([writePromise, timeoutPromise]);
@@ -120,7 +135,6 @@ export default function AdminDashboard() {
         }
       }).catch(console.warn);
 
-      const targetUser = users.find(u => u.id === userId);
       if (targetUser?.email) {
         sendEmail({
           to: targetUser.email,
@@ -319,8 +333,30 @@ export default function AdminDashboard() {
 
       // Fetch artisans
       const artisansSnap = await getDocs(collection(db, 'artisans'));
-      const artisansData = artisansSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as ArtisanProfile));
-      setArtisans(artisansData);
+      const artisanDocs = artisansSnap.docs.map(doc => {
+        const data = doc.data();
+        return { id: doc.id, ...data, userId: data.userId || doc.id } as unknown as ArtisanProfile;
+      });
+      
+      const synthesizedArtisans: any[] = [...artisanDocs];
+      const artisanUserIds = new Set(artisanDocs.map(a => a.userId));
+      
+      usersData.forEach(u => {
+        if (u.role === 'artisan' && !artisanUserIds.has(u.id)) {
+          synthesizedArtisans.push({
+            id: u.id,
+            userId: u.id,
+            tradeCategory: 'Professional Artisan',
+            yearsExp: 0,
+            ratingAvg: 0,
+            reviewsCount: 0,
+            serviceAreas: [],
+            verificationStatus: u.isKycVerified || u.kyc?.status === 'verified' ? 'verified' : 'pending',
+          });
+        }
+      });
+      
+      setArtisans(synthesizedArtisans);
       
       // Fetch jobs to calculate revenue
       const jobsSnap = await getDocs(collection(db, 'jobs'));
@@ -347,6 +383,16 @@ export default function AdminDashboard() {
       await updateDoc(doc(db, 'artisans', artisanId), {
         verificationStatus: 'verified'
       });
+      
+      const a = artisans.find(art => art.id === artisanId);
+      if (a) {
+        const uId = a.userId || a.id;
+        await setDoc(doc(db, 'users', uId), { 
+          isKycVerified: true,
+          kyc: { status: 'verified', verifiedAt: Date.now() }
+        }, { merge: true }).catch(console.error);
+      }
+      
       fetchData(); // Refresh list
     } catch (error: any) {
       if (error?.code === 'resource-exhausted' || error?.message?.includes('quota')) {
@@ -631,9 +677,15 @@ export default function AdminDashboard() {
     );
   }
 
-  const pendingArtisans = artisans.filter(a => a.verificationStatus === 'pending');
+  const pendingArtisans = artisans.filter(a => {
+    const u = users.find(u => u.id === a.userId);
+    return a.verificationStatus === 'pending' && !u?.isKycVerified && u?.kyc?.status !== 'verified';
+  });
   const customersCount = users.filter(u => u.role === 'customer').length;
-  const verifiedArtisansCount = artisans.filter(a => a.verificationStatus === 'verified').length;
+  const verifiedArtisansCount = artisans.filter(a => {
+    const u = users.find(u => u.id === a.userId);
+    return a.verificationStatus === 'verified' || u?.isKycVerified || u?.kyc?.status === 'verified';
+  }).length;
   const kycVerifiedUsersCount = users.filter(u => u.isKycVerified || u.kyc?.status === 'verified').length;
   const liveTrackedUsersCount = users.filter(u => u.liveLocation?.active).length;
   
@@ -1220,7 +1272,10 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {artisans.filter(a => a.verificationStatus === 'verified').map((artisan) => {
+                      {artisans.filter(a => {
+                        const u = users.find(u => u.id === a.userId);
+                        return a.verificationStatus === 'verified' || u?.isKycVerified || u?.kyc?.status === 'verified';
+                      }).map((artisan) => {
                         const artisanUser = users.find(u => u.id === artisan.userId);
                         return (
                           <tr key={artisan.id} className="hover:bg-slate-50/60">
@@ -1425,13 +1480,18 @@ export default function AdminDashboard() {
                                   )}
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                  <p className="font-semibold text-slate-900 flex items-center gap-1.5 flex-wrap">
                                     {u.displayName || 'Unnamed User'}
-                                    <span className={`inline-block px-1.5 py-0.2 text-[10px] rounded font-semibold capitalize ${
-                                      u.role === 'artisan' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                                    <span className={`inline-block px-1.5 py-0.5 text-[10px] rounded font-semibold capitalize ${
+                                      u.role === 'artisan' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
                                     }`}>
                                       {u.role}
                                     </span>
+                                    {artisans.some(a => a.userId === u.id || a.id === u.id) && (
+                                      <span className="inline-block px-1.5 py-0.5 text-[10px] rounded font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        Has Artisan Profile
+                                      </span>
+                                    )}
                                   </p>
                                   <p className="text-[11px] text-slate-400">{u.email}</p>
                                   {u.phoneNumber && <p className="text-[10px] text-slate-500 font-mono">{u.phoneNumber}</p>}
