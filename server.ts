@@ -34,6 +34,19 @@ try {
   console.error('Failed to load paystack-config.json:', e);
 }
 
+
+// Local Resend Config Persistence
+const RESEND_CONFIG_FILE = path.join(process.cwd(), 'resend-config.json');
+let resendConfig = { apiKey: '' };
+try {
+  if (fs.existsSync(RESEND_CONFIG_FILE)) {
+    const raw = fs.readFileSync(RESEND_CONFIG_FILE, 'utf-8');
+    resendConfig = JSON.parse(raw);
+  }
+} catch (e) {
+  console.error('Failed to load resend-config.json:', e);
+}
+
 function getPaystackSecretKey(req?: express.Request): string {
   const headerKey = req?.headers['x-paystack-secret-key'] as string;
   if (headerKey && headerKey.trim()) return headerKey.trim();
@@ -56,7 +69,10 @@ function getPaystackPublicKey(): string {
 let resendClient: Resend | null = null;
 function getResend(req?: express.Request) {
   const headerKey = req?.headers['x-resend-api-key'] as string;
-  const activeKey = (headerKey && headerKey.trim()) ? headerKey.trim() : process.env.RESEND_API_KEY;
+  let activeKey = (headerKey && headerKey.trim()) ? headerKey.trim() : process.env.RESEND_API_KEY;
+  if (!activeKey && resendConfig.apiKey && resendConfig.apiKey.trim()) {
+    activeKey = resendConfig.apiKey.trim();
+  }
   
   if (activeKey) {
     return new Resend(activeKey);

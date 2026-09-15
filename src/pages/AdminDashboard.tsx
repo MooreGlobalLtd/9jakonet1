@@ -631,7 +631,8 @@ export default function AdminDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             publicKey: cleanPublic,
-            secretKey: cleanSecret
+            secretKey: cleanSecret,
+            resendKey: cleanResend
           })
         });
       } catch (e) {
@@ -654,7 +655,8 @@ export default function AdminDashboard() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               publicKey: cleanPublic,
-              secretKey: cleanSecret
+              secretKey: cleanSecret,
+              resendKey: cleanResend
             })
           });
         } catch (e) { }
