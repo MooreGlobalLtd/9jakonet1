@@ -66,9 +66,14 @@ export default function Profile() {
       setAddress(user.address || '');
       if (user.state) setState(user.state);
       if (user.avatar) setAvatarUrl(user.avatar);
-      if (artisanProfile?.portfolioImages) setPortfolioImages(artisanProfile.portfolioImages);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (artisanProfile?.portfolioImages) {
+      setPortfolioImages(artisanProfile.portfolioImages);
+    }
+  }, [artisanProfile]);
 
   if (!user) return null;
 
