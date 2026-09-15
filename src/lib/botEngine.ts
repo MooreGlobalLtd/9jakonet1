@@ -178,7 +178,7 @@ When a customer clicks **'Release Funds'** on their Jobs dashboard:
 
 Need direct assistance from our management team?
 
-- **Official Support Email**: \`info@mooregloballtd.online\`
+- **Official Support Email**: \`support@9jakonet.com\`
 - **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)
 - **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.`;
   }

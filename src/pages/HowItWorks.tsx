@@ -94,7 +94,7 @@ export default function HowItWorks() {
              <Button className="w-full h-14 text-lg bg-emerald-600 hover:bg-emerald-700 mb-4">
                Release Funds to Artisan
              </Button>
-             <p className="text-sm text-slate-500 text-center">We only take a small 10% platform fee from the Artisan's earnings when the job is successfully completed.</p>
+             <p className="text-sm text-slate-500 text-center">Currently, 9jaKonet is 100% FREE for Artisans! 0% platform commission retained. (A premium subscription feature will be introduced later this year).</p>
           </div>
         </div>
         

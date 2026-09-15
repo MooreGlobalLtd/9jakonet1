@@ -1,62 +1,43 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/pages/Explore.tsx', 'utf8');
+let content = fs.readFileSync('src/pages/Explore.tsx', 'utf8');
 
-const targetStr = `const res = await fetch(\`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=\${latitude}&longitude=\${longitude}&localityLanguage=en\`);
-          const data = await res.json();
-          
-          setIsLocating(false);
-          let detectedLocation = '';
-          
-          if (data.principalSubdivision) {
-             detectedLocation = data.principalSubdivision.replace(' State', '');
-          } else if (data.city) {
-             detectedLocation = data.city;
-          }
-          
-          if (detectedLocation) {
-             setLocationQuery(detectedLocation);
-             toast.success(\`Location detected: \${detectedLocation}\`);
-          } else {
-             toast.error("Could not automatically determine state/city.");
-          }`;
+// We want to add a Pro badge check inside the Artisan profile card
+const oldHeader = `                  <div className="flex items-center gap-1.5">
+                    <h2 className="text-xl font-bold text-slate-900 leading-tight">{selectedArtisan.user?.displayName}</h2>
+                    {(selectedArtisan.verificationStatus === 'verified' || selectedArtisan.user?.isKycVerified || selectedArtisan.user?.kyc?.status === 'verified') && (
+                      <BadgeCheck className="h-5 w-5 text-blue-500 shrink-0" title="KYC Verified" />
+                    )}
+                  </div>`;
+const newHeader = `                  <div className="flex items-center gap-1.5">
+                    <h2 className="text-xl font-bold text-slate-900 leading-tight">{selectedArtisan.user?.displayName}</h2>
+                    {(selectedArtisan.verificationStatus === 'verified' || selectedArtisan.user?.isKycVerified || selectedArtisan.user?.kyc?.status === 'verified') && (
+                      <BadgeCheck className="h-5 w-5 text-blue-500 shrink-0" title="KYC Verified" />
+                    )}
+                    {selectedArtisan.isPremium && (
+                      <span className="flex items-center justify-center h-6 w-6 bg-amber-100 rounded-full shrink-0" title="9jaKonet Pro">
+                        <span className="text-amber-600 text-sm">👑</span>
+                      </span>
+                    )}
+                  </div>`;
+content = content.replace(oldHeader, newHeader);
 
-const replacementStr = `const res = await fetch(\`https://nominatim.openstreetmap.org/reverse?format=json&lat=\${latitude}&lon=\${longitude}&zoom=18&addressdetails=1\`);
-          const data = await res.json();
-          
-          setIsLocating(false);
-          let detectedLocation = '';
-          
-          if (data && data.address) {
-            const addr = data.address;
-            const parts = [];
-            
-            if (addr.amenity || addr.building) parts.push(addr.amenity || addr.building);
-            if (addr.road) parts.push(addr.road);
-            if (addr.neighbourhood || addr.suburb || addr.residential) {
-              parts.push(addr.neighbourhood || addr.suburb || addr.residential);
-            }
-            if (addr.city || addr.town || addr.village) {
-              parts.push(addr.city || addr.town || addr.village);
-            }
-            if (addr.state) {
-              parts.push(addr.state.replace(' State', ''));
-            }
-            
-            // Limit to max 3 parts for a clean UI, deduplicate just in case
-            detectedLocation = [...new Set(parts.filter(Boolean))].slice(0, 3).join(', ');
-          }
-          
-          if (detectedLocation) {
-             setLocationQuery(detectedLocation);
-             toast.success(\`Location detected: \${detectedLocation}\`);
-          } else {
-             toast.error("Could not automatically determine your specific location.");
-          }`;
+const oldCardHeader = `                  <div className="mt-4 flex items-center gap-1.5">
+                    <h3 className="font-semibold text-lg text-slate-900">{artisan.user?.displayName}</h3>
+                    {(artisan.verificationStatus === 'verified' || artisan.user?.isKycVerified || artisan.user?.kyc?.status === 'verified') && (
+                      <BadgeCheck className="h-5 w-5 text-blue-500" title="KYC Verified" />
+                    )}
+                  </div>`;
+const newCardHeader = `                  <div className="mt-4 flex items-center gap-1.5">
+                    <h3 className="font-semibold text-lg text-slate-900">{artisan.user?.displayName}</h3>
+                    {(artisan.verificationStatus === 'verified' || artisan.user?.isKycVerified || artisan.user?.kyc?.status === 'verified') && (
+                      <BadgeCheck className="h-5 w-5 text-blue-500" title="KYC Verified" />
+                    )}
+                    {artisan.isPremium && (
+                      <span className="flex items-center justify-center h-5 w-5 bg-amber-100 rounded-full shrink-0" title="9jaKonet Pro">
+                        <span className="text-amber-600 text-[10px]">👑</span>
+                      </span>
+                    )}
+                  </div>`;
+content = content.replace(oldCardHeader, newCardHeader);
 
-if (code.includes('api.bigdatacloud.net')) {
-    code = code.replace(targetStr, replacementStr);
-    fs.writeFileSync('src/pages/Explore.tsx', code);
-    console.log("Explore.tsx patched successfully");
-} else {
-    console.log("Could not find target string in Explore.tsx");
-}
+fs.writeFileSync('src/pages/Explore.tsx', content);

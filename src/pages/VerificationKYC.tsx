@@ -383,7 +383,7 @@ export default function VerificationKYC() {
 
       // 4. Send official notification email to support and admin desk
       sendEmail({
-        to: 'info@mooregloballtd.online',
+        to: 'support@9jakonet.com',
         subject: `New KYC Verification Submitted for Manual Review: ${fullName} (${user.role})`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
@@ -491,7 +491,7 @@ export default function VerificationKYC() {
             Identity Verification Submitted!
           </CardTitle>
           <CardDescription className="text-slate-600 text-sm mt-2 max-w-md mx-auto">
-            Your documents and live face selfie have been securely received and forwarded to our Verification Desk (<span className="font-semibold text-emerald-800">info@mooregloballtd.online</span>) and Admin Control Panel.
+            Your documents and live face selfie have been securely received and forwarded to our Verification Desk (<span className="font-semibold text-emerald-800">support@9jakonet.com</span>) and Admin Control Panel.
           </CardDescription>
 
           <div className="my-6 p-4 rounded-xl bg-white border border-emerald-200 shadow-xs max-w-md mx-auto text-left space-y-2 text-xs text-slate-700">

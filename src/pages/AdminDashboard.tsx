@@ -668,7 +668,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const isSuperAdmin = (user?.email === 'ayorindesamuel705@gmail.com' || user?.email === 'info@mooregloballtd.online');
+  const isSuperAdmin = (user?.email === 'ayorindesamuel705@gmail.com' || user?.email === 'support@9jakonet.com' || user?.email === 'info@mooregloballtd.online');
   if (user?.role !== 'admin' && !isSuperAdmin) {
     return (
       <div className="container mx-auto p-8 text-center text-red-600">
@@ -689,7 +689,7 @@ export default function AdminDashboard() {
   const kycVerifiedUsersCount = users.filter(u => u.isKycVerified || u.kyc?.status === 'verified').length;
   const liveTrackedUsersCount = users.filter(u => u.liveLocation?.active).length;
   
-  // Calculate Platform Revenue (10% of completed jobs)
+  // Calculate Total Escrow Volume (0% Promo)
   const completedJobs = jobs.filter(j => j.status === 'completed');
   const totalRevenue = completedJobs.reduce((sum, j) => sum + (j.platformFee || 0), 0);
   const totalEscrowVolume = completedJobs.reduce((sum, j) => sum + (j.amount || 0), 0);
@@ -763,7 +763,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-slate-400">10% Platform Cut</span>
+              <span className="text-slate-400">0% Commission (Promo)</span>
               <span className={`font-semibold flex items-center gap-0.5 ${activeDetailView === 'revenue' ? 'text-emerald-400' : 'text-slate-400'}`}>
                 {activeDetailView === 'revenue' ? 'Active Breakdown' : 'View Ledger →'}
               </span>
@@ -936,7 +936,7 @@ export default function AdminDashboard() {
                     {activeDetailView === 'kyc_security' && `Security & KYC Verification Registry (${kycVerifiedUsersCount}/${users.length} Verified)`}
                   </CardTitle>
                   <p className="text-xs text-slate-500">
-                    {activeDetailView === 'revenue' && 'Complete audit log of 10% platform commission with exact dates, times, and artisan details.'}
+                    {activeDetailView === 'revenue' && 'Complete audit log of all completed escrow jobs and platform revenue.'}
                     {activeDetailView === 'users' && 'Manage all user accounts, view wallet balances, and clear prototype test balances.'}
                     {activeDetailView === 'verified_artisans' && 'Directory of all vetted artisans approved to accept jobs.'}
                     {activeDetailView === 'customers' && 'Directory of all registered clients hiring artisans.'}
@@ -1023,7 +1023,7 @@ export default function AdminDashboard() {
                   <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
                     <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">Total Platform Commission</span>
                     <span className="text-2xl font-bold text-emerald-900 mt-1 block">₦{totalRevenue.toLocaleString()}</span>
-                    <span className="text-[11px] text-emerald-700 mt-0.5 block">10% retained from all finished jobs</span>
+                    <span className="text-[11px] text-emerald-700 mt-0.5 block">0% currently retained (100% payout promo)</span>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider block">Gross Escrow Transacted</span>
@@ -1060,7 +1060,7 @@ export default function AdminDashboard() {
                     <Banknote className="h-10 w-10 text-slate-300 mx-auto mb-2" />
                     <p className="font-medium text-slate-700">No completed jobs found</p>
                     <p className="text-xs text-slate-500 mt-1">
-                      Whenever a customer clicks &ldquo;Release Funds&rdquo; for an artisan, the job and 10% commission entry will be instantly logged here with exact date and time.
+                      Whenever a customer clicks &ldquo;Release Funds&rdquo;, the completed job will be logged here.
                     </p>
                   </div>
                 ) : (
@@ -1073,7 +1073,7 @@ export default function AdminDashboard() {
                           <th className="px-4 py-3">Artisan</th>
                           <th className="px-4 py-3">Customer</th>
                           <th className="px-4 py-3">Total Value</th>
-                          <th className="px-4 py-3 text-emerald-700 bg-emerald-50/50">Commission (10%)</th>
+                          <th className="px-4 py-3 text-emerald-700 bg-emerald-50/50">Commission (0%)</th>
                           <th className="px-4 py-3">Artisan Net (90%)</th>
                           <th className="px-4 py-3">Status</th>
                         </tr>

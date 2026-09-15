@@ -256,7 +256,7 @@ export default function JobsAndEscrow() {
     const job = otpModalJob;
 
     try {
-      const platformFee = Math.round(job.amount * 0.10);
+      const platformFee = 0; // PROMO: 0% fee
       const artisanPayout = job.amount - platformFee;
       const completedAt = Date.now();
 
@@ -333,8 +333,8 @@ export default function JobsAndEscrow() {
             <h2>Payment Released by Customer!</h2>
             <p>Hi ${job.artisanName},</p>
             <p>Congratulations! ${job.customerName} has approved your work on <strong>"${job.title}"</strong> and released the funds.</p>
-            <p>Your net payout of <strong>₦${artisanPayout.toLocaleString()}</strong> (90%) has been queued for bank disbursement by 9jaKonet Admin.</p>
-            <p>10% platform commission retained: ₦${platformFee.toLocaleString()}.</p>
+            <p>Your net payout of <strong>₦${artisanPayout.toLocaleString()}</strong> (100% PROMO) has been queued for bank disbursement by 9jaKonet Admin.</p>
+            <p>Special promo! 0% platform commission retained: ₦${platformFee.toLocaleString()}.</p>
             <br/>
             <p>Thank you for your excellent service!</p>
           `
@@ -343,7 +343,7 @@ export default function JobsAndEscrow() {
 
       // 7. Notify admin
       sendEmail({
-        to: 'info@mooregloballtd.online',
+        to: 'support@9jakonet.com',
         subject: `🚨 New Escrow Payout: ₦${artisanPayout.toLocaleString()} for ${job.artisanName}`,
         html: `
           <h2>New Escrow Payout to Disburse</h2>
@@ -351,7 +351,7 @@ export default function JobsAndEscrow() {
           <p><strong>Artisan:</strong> ${job.artisanName}</p>
           <p><strong>Bank:</strong> ${artisanData.bankName || 'N/A'} - ${artisanData.accountNumber || 'N/A'}</p>
           <p><strong>Net Payout Amount:</strong> ₦${artisanPayout.toLocaleString()}</p>
-          <p><strong>Platform Commission (10%):</strong> ₦${platformFee.toLocaleString()}</p>
+          <p><strong>Platform Commission (0% PROMO):</strong> ₦${platformFee.toLocaleString()}</p>
           <p>Log in to the Admin Panel to mark this payout paid manually via your bank app or via Paystack.</p>
         `
       });
@@ -726,11 +726,11 @@ export default function JobsAndEscrow() {
                 <span className="font-semibold text-slate-900">₦{(otpModalJob.amount || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-slate-500 text-xs">
-                <span>Platform Commission (10%):</span>
+                <span>Platform Commission (0% PROMO):</span>
                 <span>₦{Math.round((otpModalJob.amount || 0) * 0.10).toLocaleString()}</span>
               </div>
               <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-emerald-700">
-                <span>Artisan Net Payout (90%):</span>
+                <span>Artisan Net Payout (100% PROMO):</span>
                 <span>₦{Math.round((otpModalJob.amount || 0) * 0.90).toLocaleString()}</span>
               </div>
             </div>

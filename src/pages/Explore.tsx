@@ -348,6 +348,11 @@ export default function Explore() {
                     {(artisan.verificationStatus === 'verified' || artisan.user?.isKycVerified || artisan.user?.kyc?.status === 'verified') && (
                       <BadgeCheck className="h-5 w-5 text-blue-500" title="KYC Verified" />
                     )}
+                    {artisan.isPremium && (
+                      <span className="flex items-center justify-center h-5 w-5 bg-amber-100 rounded-full shrink-0" title="9jaKonet Pro">
+                        <span className="text-amber-600 text-[10px]">👑</span>
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-emerald-600">{artisan.tradeCategory || 'Service Provider'}</p>
                   
@@ -402,6 +407,11 @@ export default function Explore() {
                     <h2 className="text-xl font-bold text-slate-900 leading-tight">{selectedArtisan.user?.displayName}</h2>
                     {(selectedArtisan.verificationStatus === 'verified' || selectedArtisan.user?.isKycVerified || selectedArtisan.user?.kyc?.status === 'verified') && (
                       <BadgeCheck className="h-5 w-5 text-blue-500 shrink-0" title="KYC Verified" />
+                    )}
+                    {selectedArtisan.isPremium && (
+                      <span className="flex items-center justify-center h-6 w-6 bg-amber-100 rounded-full shrink-0" title="9jaKonet Pro">
+                        <span className="text-amber-600 text-sm">👑</span>
+                      </span>
                     )}
                   </div>
                   <p className="text-emerald-600 font-medium text-sm mt-0.5">{selectedArtisan.tradeCategory}</p>

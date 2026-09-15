@@ -120,7 +120,7 @@ export default function Navbar() {
           
           {user ? (
             <div className="flex items-center gap-4">
-              {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'info@mooregloballtd.online')) && (
+              {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'support@9jakonet.com' || user.email === 'info@mooregloballtd.online')) && (
                 <>
                   <Link to="/admin" className="font-semibold text-amber-600 hover:text-amber-700">Admin Panel</Link>
                   <a href="/9jakonet_official_logo.png" download className="text-amber-600 hover:text-amber-700 font-bold ml-4" title="Download Official Logo">⬇ Logo</a>
@@ -266,7 +266,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="space-y-2 pt-2 border-t border-slate-100">
-              {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'info@mooregloballtd.online')) && (
+              {(user.role === 'admin' || (user.email === 'ayorindesamuel705@gmail.com' || user.email === 'support@9jakonet.com' || user.email === 'info@mooregloballtd.online')) && (
                 <>
                   <Link to="/admin" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-semibold text-amber-600 hover:bg-amber-50">
                     Admin Panel

@@ -86,7 +86,7 @@ async function startServer() {
 
     try {
       const data = await resend.emails.send({
-        from: '9jaKonet <info@mooregloballtd.online>',
+        from: '9jaKonet <support@9jakonet.com>',
         to: Array.isArray(to) ? to : [to],
         subject: subject,
         html: html,
@@ -522,7 +522,7 @@ STRICT BOUNDARY & EXCLUSIVITY RULE:
 
     // 10. Contact Support & Admin Help
     if (/support|contact|help|email|phone number|call|admin|customer care/.test(q)) {
-      return "### 9jaKonet Support & Customer Concierge 💬\n\nNeed direct assistance from our management team?\n\n- **Official Support Email**: `info@mooregloballtd.online`\n- **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)\n- **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.";
+      return "### 9jaKonet Support & Customer Concierge 💬\n\nNeed direct assistance from our management team?\n\n- **Official Support Email**: `support@9jakonet.com`\n- **Helpdesk Hours**: Monday – Saturday, 8:00 AM – 7:00 PM (WAT)\n- **Live Dispute Assistance**: Accessible 24/7 directly from your Jobs & Escrow dashboard.";
     }
 
     // 11. Greetings & Pleasantries

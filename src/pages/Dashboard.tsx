@@ -206,6 +206,28 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+          {user.role === 'artisan' && (
+            <Card className="mt-6 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 shadow-sm animate-in fade-in duration-500">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-8 w-8 bg-amber-100 rounded-full flex items-center justify-center">
+                    <span className="text-amber-600 font-bold text-lg">👑</span>
+                  </div>
+                  <h3 className="font-bold text-slate-900">9jaKonet Pro</h3>
+                </div>
+                <p className="text-sm text-slate-600 mb-4">
+                  Coming soon in Q4! Upgrade to <strong>Pro</strong> to get a Verified Pro badge and rank at the top of customer search results. 
+                </p>
+                <Button 
+                  variant="outline" 
+                  className="w-full bg-white border-amber-300 text-amber-700 hover:bg-amber-50 font-semibold"
+                  onClick={() => alert("🎉 You have been added to the VIP waitlist! We will notify you the moment 9jaKonet Pro launches.")}
+                >
+                  Join the VIP Waitlist
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

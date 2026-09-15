@@ -1,66 +1,11 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/pages/AdminDashboard.tsx', 'utf8');
+let content = fs.readFileSync('src/pages/AdminDashboard.tsx', 'utf8');
 
-const targetMakeAdmin = `  const handleResetSingleUserBalance = async (targetUser: User) => {`;
-const newMakeAdmin = `  const handleMakeAdmin = async (targetUser: User) => {
-    if (confirm(\`Are you sure you want to promote \${targetUser.displayName || targetUser.email} to Admin?\`)) {
-      try {
-        await updateDoc(doc(db, 'users', targetUser.id), {
-          role: 'admin'
-        });
-        setUsers(users.map(u => u.id === targetUser.id ? { ...u, role: 'admin' } : u));
-        toast.success(\`\${targetUser.displayName || targetUser.email} is now an Admin.\`);
-      } catch (err) {
-        console.error("Error promoting user:", err);
-        toast.error("Failed to promote user to Admin.");
-      }
-    }
-  };
+content = content.replace('Platform Revenue (10% of completed jobs)', 'Total Escrow Volume (0% Promo)');
+content = content.replace('<span className="text-slate-400">10% Platform Cut</span>', '<span className="text-slate-400">0% Commission (Promo)</span>');
+content = content.replace('Complete audit log of 10% platform commission with exact dates, times, and artisan details.', 'Complete audit log of all completed escrow jobs and platform revenue.');
+content = content.replace('10% retained from all finished jobs', '0% currently retained (100% payout promo)');
+content = content.replace('Whenever a customer clicks &ldquo;Release Funds&rdquo; for an artisan, the job and 10% commission entry will be instantly logged here with exact date and time.', 'Whenever a customer clicks &ldquo;Release Funds&rdquo;, the completed job will be logged here.');
+content = content.replace('<th className="px-4 py-3 text-emerald-700 bg-emerald-50/50">Commission (10%)</th>', '<th className="px-4 py-3 text-emerald-700 bg-emerald-50/50">Commission (0%)</th>');
 
-  const handleResetSingleUserBalance = async (targetUser: User) => {`;
-
-if (code.includes(targetMakeAdmin) && !code.includes('handleMakeAdmin')) {
-  code = code.replace(targetMakeAdmin, newMakeAdmin);
-}
-
-const targetButton = `                            {(u.walletBalance || 0) > 0 ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleResetSingleUserBalance(u)}
-                                className="h-7 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-100"
-                              >
-                                Reset to ₦0
-                              </Button>
-                            ) : (
-                              <span className="text-slate-400 text-[11px] px-2">₦0 Clean</span>
-                            )}`;
-const newButton = `                            {u.role !== 'admin' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleMakeAdmin(u)}
-                                className="h-7 text-[11px] border-purple-200 text-purple-700 hover:bg-purple-50 mr-2"
-                              >
-                                Make Admin
-                              </Button>
-                            )}
-                            {(u.walletBalance || 0) > 0 ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleResetSingleUserBalance(u)}
-                                className="h-7 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-100"
-                              >
-                                Reset to ₦0
-                              </Button>
-                            ) : (
-                              <span className="text-slate-400 text-[11px] px-2">₦0 Clean</span>
-                            )}`;
-
-if (code.includes(targetButton) && !code.includes('Make Admin')) {
-  code = code.replace(targetButton, newButton);
-}
-
-fs.writeFileSync('src/pages/AdminDashboard.tsx', code);
-console.log("Admin panel patched with handleMakeAdmin");
+fs.writeFileSync('src/pages/AdminDashboard.tsx', content);
