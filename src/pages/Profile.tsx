@@ -140,12 +140,12 @@ export default function Profile() {
     setErrorMessage('');
     
     try {
-      const uploadedUrls = [];
-      for (const file of filesToUpload) {
+      const uploadPromises = filesToUpload.map(async (file) => {
         const compressed = await compressImageFile(file, { maxDimension: 800, quality: 0.85 });
-        const cloudinaryUrl = await uploadToCloudinary(compressed);
-        uploadedUrls.push(cloudinaryUrl);
-      }
+        return await uploadToCloudinary(compressed);
+      });
+      
+      const uploadedUrls = await Promise.all(uploadPromises);
       
       const newImages = [...portfolioImages, ...uploadedUrls];
       setPortfolioImages(newImages);
@@ -511,7 +511,7 @@ export default function Profile() {
           </CardHeader>
           <CardContent className="pt-6">
             <p className="text-sm text-slate-500 mb-6">
-              Upload photos of your past work. Customers love seeing visual proof of your skills! (Max 6 images)
+              Upload photos of your past work. Customers love seeing visual proof of your skills! (Max 10 images)
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
