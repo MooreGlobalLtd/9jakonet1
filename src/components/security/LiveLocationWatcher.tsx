@@ -219,7 +219,7 @@ export default function LiveLocationWatcher() {
               onClick={useRegisteredStateLocation}
               className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-2.5 py-1.5 h-auto rounded-lg border border-amber-400/50"
             >
-              Use {user?.state || 'Lagos'} Pin
+              Use Profile Location
             </Button>
 
             <button
@@ -383,7 +383,7 @@ export default function LiveLocationWatcher() {
                   onClick={useRegisteredStateLocation}
                 >
                   <MapPin className="h-3.5 w-3.5 mr-1" />
-                  Use {user?.state || 'Lagos'} Pin
+                  Use Profile Location
                 </Button>
 
                 <Button 
