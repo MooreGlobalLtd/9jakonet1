@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
 import { MarketplaceItem } from '../types';
@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { uploadToCloudinary } from '../lib/cloudinary';
-import { Store, MapPin, Tag, Plus, Loader2, X, Phone, Navigation, MessageCircle, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { Store, MapPin, Tag, Plus, Loader2, X, Phone, Navigation, MessageCircle, ShoppingBag, ShieldCheck, Car, Smartphone, Laptop, Sofa, Shirt, Home, MoreHorizontal, Trash2 } from 'lucide-react';
 import { PaystackButton } from 'react-paystack';
 import { getDocs, where } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
@@ -18,6 +18,18 @@ export default function Marketplace() {
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  
+  const visualCategories = [
+    { name: 'All', icon: <Store className="w-5 h-5" /> },
+    { name: 'Vehicles', icon: <Car className="w-5 h-5" /> },
+    { name: 'Electronics', icon: <Smartphone className="w-5 h-5" /> },
+    { name: 'Computers', icon: <Laptop className="w-5 h-5" /> },
+    { name: 'Furniture', icon: <Sofa className="w-5 h-5" /> },
+    { name: 'Fashion', icon: <Shirt className="w-5 h-5" /> },
+    { name: 'Properties', icon: <Home className="w-5 h-5" /> },
+    { name: 'Other', icon: <MoreHorizontal className="w-5 h-5" /> },
+  ];
   
   // Post Ad Modal State
   const [isPosting, setIsPosting] = useState(false);
@@ -42,6 +54,18 @@ export default function Marketplace() {
   const [checkoutItem, setCheckoutItem] = useState<MarketplaceItem | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
+
+  const handleDeleteAd = async (itemId: string, sellerId: string) => {
+    if (!user || user.id !== sellerId) return;
+    // confirm removed because of iframe restrictions
+    
+    try {
+      await deleteDoc(doc(db, 'marketplace_items', itemId));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete ad.');
+    }
+  };
 
   const handleMessageSeller = async (sellerId: string) => {
     if (!user) return navigate('/login');
@@ -234,6 +258,7 @@ export default function Marketplace() {
 
   const filteredItems = items.filter(item => 
     item.status === 'active' &&
+    (selectedCategory === 'All' || item.category.toLowerCase().includes(selectedCategory.toLowerCase()) || selectedCategory.toLowerCase().includes(item.category.toLowerCase())) &&
     (item.title.toLowerCase().includes(search.toLowerCase()) ||
     item.category.toLowerCase().includes(search.toLowerCase()) ||
     item.state.toLowerCase().includes(search.toLowerCase()) ||
@@ -271,8 +296,8 @@ export default function Marketplace() {
           </div>
         </div>
 
-        {/* Search & Filter */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row gap-4">
+        {/* Search & Categories */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-8 space-y-4">
           <div className="flex-1">
             <Input 
               placeholder="Search for phones, cars, furniture, or your city..." 
@@ -280,6 +305,24 @@ export default function Marketplace() {
               onChange={(e) => setSearch(e.target.value)}
               className="h-12 bg-slate-50 border-slate-200"
             />
+          </div>
+          
+          {/* Horizontal scrollable categories */}
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2">
+            {visualCategories.map(cat => (
+              <button
+                key={cat.name}
+                onClick={() => setSelectedCategory(cat.name)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
+                  selectedCategory === cat.name 
+                    ? 'bg-emerald-100 text-emerald-800 font-semibold border-emerald-200' 
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                } border`}
+              >
+                {cat.icon}
+                <span className="text-sm">{cat.name}</span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -298,24 +341,32 @@ export default function Marketplace() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-6">
             {filteredItems.map(item => (
               <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-all border-slate-200 group">
-                <div className="relative h-48 bg-slate-100 overflow-hidden">
+                <div className="relative h-36 sm:h-48 bg-slate-100 overflow-hidden">
                   <img 
                     src={item.images[0] || 'https://via.placeholder.com/400x300?text=No+Image'} 
                     alt={item.title} 
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  
+                  {/* FB Style Just Listed Badge */}
+                  {(Date.now() - item.createdAt) < (24 * 60 * 60 * 1000) && (
+                    <div className="absolute top-2 left-2 bg-emerald-600/90 backdrop-blur-sm px-2 py-1 rounded text-[10px] sm:text-xs font-semibold text-white tracking-wide shadow-sm">
+                      Just listed
+                    </div>
+                  )}
+
+                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-[10px] sm:text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     {item.condition}
                   </div>
                 </div>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-slate-900 line-clamp-1 flex-1">{item.title}</h3>
+                    <h3 className="font-semibold text-slate-900 line-clamp-1 flex-1 text-sm sm:text-base">{item.title}</h3>
                   </div>
-                  <p className="text-xl font-bold text-emerald-600 mb-3">₦{item.price.toLocaleString()}</p>
+                  <p className="text-lg sm:text-xl font-bold text-emerald-600 mb-3">₦{item.price.toLocaleString()}</p>
                   
                   <div className="flex items-center text-sm text-slate-500 mb-4 gap-4">
                     <div className="flex items-center gap-1">
@@ -350,13 +401,22 @@ export default function Marketplace() {
                         </a>
                       </div>
                     </div>
-                    {user?.id !== item.sellerId && (
+                    {user?.id !== item.sellerId ? (
                       <Button 
                         onClick={() => user ? setCheckoutItem(item) : navigate('/login')}
                         className="w-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center gap-2"
                       >
                         <ShieldCheck className="w-4 h-4" />
                         Buy with Escrow
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={() => handleDeleteAd(item.id, item.sellerId)}
+                        variant="outline"
+                        className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Ad
                       </Button>
                     )}
                   </div>
