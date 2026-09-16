@@ -57,11 +57,13 @@ export const useAuthStore = create<AuthState>((set) => ({
             const isNewUser = Date.now() - creationTime < 5 * 60 * 1000; // within 5 minutes of sign up
             
             if (isNewUser) {
+              const pendingRole = (sessionStorage.getItem('pendingRegistrationRole') as any) || 'customer';
+              sessionStorage.removeItem('pendingRegistrationRole');
               const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
                 displayName: firebaseUser.displayName || 'User',
-                role: 'customer' as const,
+                role: pendingRole,
                 createdAt: Date.now(),
                 walletBalance: 0,
                 isKycVerified: false

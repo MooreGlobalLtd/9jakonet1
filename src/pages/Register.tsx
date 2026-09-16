@@ -238,6 +238,7 @@ export default function Register() {
     setErrorMessage('');
 
     try {
+      sessionStorage.setItem('pendingRegistrationRole', role);
       await signInWithPopup(auth, googleProvider);
       // For now: Authenticate users only, Do NOT save user profile data
       navigate('/dashboard');
