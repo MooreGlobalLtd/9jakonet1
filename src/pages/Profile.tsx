@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -135,7 +136,7 @@ export default function Profile() {
     }
 
     const availableSlots = 10 - portfolioImages.length;
-    const filesToUpload = Array.from(files).slice(0, availableSlots);
+    const filesToUpload = (Array.from(files) as File[]).slice(0, availableSlots);
 
     if (files.length > availableSlots) {
       toast.info(`Only ${availableSlots} more image(s) can be uploaded. Extra files were ignored.`);

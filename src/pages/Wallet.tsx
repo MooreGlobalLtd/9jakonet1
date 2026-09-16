@@ -389,20 +389,14 @@ export default function Wallet() {
             </div>
           )}
 
-          {!isCustomer && (
-            <div className="space-y-6">
+          <div className="space-y-6 mt-6">
               {/* Bank Details Form */}
       <div className="grid md:grid-cols-1 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <h3 className="text-xl font-bold text-slate-900 mb-6">Direct Escrow Payout Bank</h3>
-          {isCustomer ? (
-            <div className="text-center text-slate-500 py-4">
-              Customers cannot receive escrow payouts. You can only fund escrows for jobs.
-            </div>
-          ) : (
             <div>
               <p className="text-sm text-slate-600 mb-6">
-                Set your verified bank account below. When a customer releases escrow funds, the 90% payout is automatically queued and disbursed to this bank account by the admin.
+                Set your verified bank account below. When an escrow is released, the payout is automatically queued and disbursed to this bank account.
               </p>
               <div className="max-w-xl">
                 <form className="space-y-4">
@@ -470,17 +464,14 @@ export default function Wallet() {
                 </form>
               </div>
             </div>
-          )}
         </div>
       </div>
             </div>
-          )}
         </div>
       </div>
 
 
       {/* History Sections */}
-      {!isCustomer && (
         <div className="mt-12">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-slate-900">Payment &amp; Payout Evidence</h3>
@@ -608,7 +599,6 @@ export default function Wallet() {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

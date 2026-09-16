@@ -13,6 +13,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Explore from './pages/Explore';
+import Marketplace from './pages/Marketplace';
 import Dashboard from './pages/Dashboard';
 import ArtisanSetup from './pages/ArtisanSetup';
 import Profile from './pages/Profile';
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
           <Route path="explore" element={<Explore />} />
+          <Route path="marketplace" element={<Marketplace />} />
           <Route path="terms" element={<Terms />} />
           <Route path="logo-preview" element={<LogoPreview />} />
           <Route path="promo" element={<PromoTrailer />} />

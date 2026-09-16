@@ -129,4 +129,27 @@ export interface EscrowContract {
   createdAt: number;
   fundedAt?: number;
   completedAt?: number;
+  contractType?: 'service' | 'product';
+  itemId?: string;
+  trackingNumber?: string;
+  deliveryPin?: string;
+  deliveryAddress?: string;
+}
+
+export interface MarketplaceItem {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  sellerPhone?: string;
+  sellerAvatar?: string;
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  condition: 'new' | 'used';
+  images: string[];
+  state: string;
+  city: string;
+  status: 'active' | 'sold';
+  createdAt: number;
 }

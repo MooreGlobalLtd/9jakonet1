@@ -45,6 +45,12 @@ export default function Dashboard() {
   const handlePostJob = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    
+    if (!user.isKycVerified) {
+      alert("You must complete your identity verification (KYC) before you can post jobs.");
+      return;
+    }
+    
     try {
       const newJob = {
         customerId: user.id,
@@ -92,7 +98,13 @@ export default function Dashboard() {
           </p>
         </div>
         {user.role === 'customer' && (
-          <Button onClick={() => setShowJobForm(!showJobForm)}>
+          <Button onClick={() => {
+            if (!user.isKycVerified) {
+              alert("You must complete your identity verification (KYC) before you can post jobs.");
+              return;
+            }
+            setShowJobForm(!showJobForm);
+          }}>
             {showJobForm ? 'Cancel' : 'Post New Job'}
           </Button>
         )}

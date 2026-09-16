@@ -120,7 +120,7 @@ export default function Explore() {
         const usersMap = new Map();
         userSnap.docs.forEach(doc => usersMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
-        const artisanDocs = artisanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const artisanDocs = artisanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
         const synthesizedArtisans: any[] = [];
 
         // 1. Process all explicitly created artisan profiles
@@ -218,6 +218,11 @@ export default function Explore() {
   const handleMessageArtisan = async (artisanId: string) => {
     if (!user) {
       navigate('/login');
+      return;
+    }
+    
+    if (!user.isKycVerified) {
+      alert("You must complete identity verification (KYC) before you can contact and hire artisans.");
       return;
     }
     

@@ -238,6 +238,10 @@ export default function Messages() {
                     <Button 
                       size="sm" 
                       onClick={() => {
+                        if (!user.isKycVerified) {
+                          alert("You must complete your KYC verification before you can send a job offer or initiate Escrow.");
+                          return;
+                        }
                         // Quick fallback to simple inline UI since prompt is blocked
                         const jobForm = document.getElementById('quick-job-form');
                         if (jobForm) {
