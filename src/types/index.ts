@@ -146,7 +146,8 @@ export interface MarketplaceItem {
   description: string;
   price: number;
   category: string;
-  condition: 'new' | 'used';
+  condition: 'new' | 'used' | 'tokunbo' | 'nigerian_used' | string;
+  isNegotiable?: boolean;
   images: string[];
   state: string;
   city: string;
