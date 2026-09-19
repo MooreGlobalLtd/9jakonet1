@@ -21,3 +21,20 @@ export const uploadToCloudinary = async (fileOrDataUrl: File | Blob | string): P
     throw new Error('Failed to upload image to Cloudinary. Please try again.');
   }
 };
+
+export const uploadVideoToCloudinary = async (fileOrDataUrl: File | Blob | string): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', fileOrDataUrl);
+  formData.append('upload_preset', UPLOAD_PRESET);
+
+  try {
+    const response = await axios.post(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
+      formData
+    );
+    return response.data.secure_url;
+  } catch (error: any) {
+    console.error('Error uploading video to Cloudinary:', error?.response?.data || error);
+    throw new Error('Failed to upload video clip to Cloudinary. Please check file size or try again.');
+  }
+};

@@ -6,15 +6,19 @@ import { MarketplaceItem } from '../types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
-import { uploadToCloudinary } from '../lib/cloudinary';
+import { uploadToCloudinary, uploadVideoToCloudinary } from '../lib/cloudinary';
 import { 
   Store, MapPin, Tag, Plus, Loader2, X, Phone, Navigation, MessageCircle, 
   ShoppingBag, ShieldCheck, Car, Smartphone, Laptop, Sofa, Shirt, Home, 
   MoreHorizontal, Trash2, Search, CheckCircle2, Share2, Send, HelpCircle, 
-  Sparkles, Wrench, ChevronRight, Check
+  Sparkles, Wrench, ChevronRight, Check, Flame, Video, Play, Bell
 } from 'lucide-react';
 import { PaystackButton } from 'react-paystack';
 import { useNavigate } from 'react-router-dom';
+import { SEED_MARKETPLACE_ITEMS } from '../data/seedMarketplaceItems';
+import BookInspectionModal, { getRecommendedTradeForItem, POPULAR_INSPECTION_TRADES } from '../components/marketplace/BookInspectionModal';
+import { formatWhatsAppUrl, sendInAppNotification, requestBrowserNotificationPermission } from '../lib/notifications';
+import { toast } from 'sonner';
 
 export default function Marketplace() {
   const { user } = useAuthStore();
@@ -28,7 +32,7 @@ export default function Marketplace() {
   const [search, setSearch] = useState('');
   const [selectedState, setSelectedState] = useState<string>('All Nigeria');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [activeTab, setActiveTab] = useState<'all' | 'my_ads'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'distress' | 'my_ads'>('all');
 
   // Modals & Detailed Views
   const [selectedDetailItem, setSelectedDetailItem] = useState<MarketplaceItem | null>(null);
@@ -36,6 +40,16 @@ export default function Marketplace() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [showSafetyGuide, setShowSafetyGuide] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [mediaTab, setMediaTab] = useState<'photo' | 'video'>('photo');
+
+  // Artisan Inspection Bridge Modal State
+  const [showInspectionModal, setShowInspectionModal] = useState(false);
+  const [inspectionTargetItem, setInspectionTargetItem] = useState<MarketplaceItem | null>(null);
+
+  // Push Notification Prompt State
+  const [hasNotificationPermission, setHasNotificationPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission === 'granted' : false
+  );
 
   // Visual Categories with icons (Jiji inspiration)
   const visualCategories = [
@@ -53,6 +67,93 @@ export default function Marketplace() {
   const [isPosting, setIsPosting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // Seeder Dialog State (Custom In-App UI - immune to iframe confirm/alert blocking)
+  const [showSeedDialog, setShowSeedDialog] = useState(false);
+  const [seedProgress, setSeedProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const [seedSuccessMsg, setSeedSuccessMsg] = useState<string | null>(null);
+  const [seedErrorMsg, setSeedErrorMsg] = useState<string | null>(null);
+
+  // Helper to check if current user is the owner or an admin
+  const canManageItem = (sellerId?: string) => {
+    if (!user) return false;
+    return (
+      user.id === sellerId ||
+      user.role === 'admin' ||
+      user.email === 'ayorindesamuel705@gmail.com' ||
+      user.email === 'support@9jakonet.com' ||
+      user.email === 'info@mooregloballtd.online'
+    );
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestBrowserNotificationPermission();
+    setHasNotificationPermission(granted);
+    if (granted) {
+      toast.success('Instant alerts activated! You will receive live notifications for buyer inquiries.');
+    }
+  };
+
+  // Helper to seed 30 starter items with live progress and admin ownership
+  const handleExecuteSeed = async (clearExisting: boolean = false) => {
+    if (!user) {
+      setSeedErrorMsg('Please log in with your admin account (ayorindesamuel705@gmail.com) to seed items.');
+      return;
+    }
+
+    setIsSeeding(true);
+    setSeedErrorMsg(null);
+    setSeedSuccessMsg(null);
+    setSeedProgress({ current: 0, total: SEED_MARKETPLACE_ITEMS.length, title: 'Initializing...' });
+
+    try {
+      if (clearExisting && items.length > 0) {
+        setSeedProgress({ current: 0, total: SEED_MARKETPLACE_ITEMS.length, title: 'Clearing previous listings...' });
+        for (const itm of items) {
+          try {
+            await deleteDoc(doc(db, 'marketplace_items', itm.id));
+          } catch (delErr) {
+            console.warn('Could not delete item:', itm.id, delErr);
+          }
+        }
+      }
+
+      let count = 0;
+      for (const sample of SEED_MARKETPLACE_ITEMS) {
+        count++;
+        setSeedProgress({
+          current: count,
+          total: SEED_MARKETPLACE_ITEMS.length,
+          title: sample.title
+        });
+
+        await addDoc(collection(db, 'marketplace_items'), {
+          ...sample,
+          sellerId: user.id, // assigned directly to current logged-in admin so you can mark as sold/active with 1 click
+          sellerName: sample.sellerName,
+          sellerPhone: sample.sellerPhone,
+          whatsappNumber: sample.whatsappNumber || sample.sellerPhone,
+          isDistressSale: sample.isDistressSale || false,
+          distressReason: sample.distressReason || '',
+          videoUrl: sample.videoUrl || '',
+          recommendedArtisanTrade: sample.recommendedArtisanTrade || '',
+          createdAt: Date.now() - (count * 1000 * 60 * 35)
+        });
+      }
+
+      setSeedSuccessMsg(`Successfully added ${SEED_MARKETPLACE_ITEMS.length} marketplace listings! All listings are now active in the database and linked to your controls.`);
+      setTimeout(() => {
+        setShowSeedDialog(false);
+        setSeedProgress(null);
+      }, 2500);
+    } catch (e: any) {
+      console.error('Failed to seed starter items:', e);
+      setSeedErrorMsg(e?.message || 'Error adding sample listings. Please check your connection.');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   // Form inputs
   const [title, setTitle] = useState('');
@@ -60,10 +161,18 @@ export default function Marketplace() {
   const [price, setPrice] = useState('');
   const [isNegotiable, setIsNegotiable] = useState(true);
   const [category, setCategory] = useState('');
-  const [condition, setCondition] = useState<string>('used');
+  const [condition, setCondition] = useState<string>('tokunbo');
   const [stateName, setStateName] = useState('Lagos');
   const [cityName, setCityName] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+
+  // New Post Ad Inputs: Distress sale, WhatsApp, Video, Artisan Trade
+  const [isDistressSale, setIsDistressSale] = useState(false);
+  const [distressReason, setDistressReason] = useState('Relocating abroad (Japa Sale)');
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [whatsappNumberInput, setWhatsappNumberInput] = useState('');
+  const [recommendedTradeInput, setRecommendedTradeInput] = useState('');
 
   // Checkout Modal State
   const [checkoutItem, setCheckoutItem] = useState<MarketplaceItem | null>(null);
@@ -130,7 +239,8 @@ export default function Marketplace() {
 
   // Delete Ad Handler
   const handleDeleteAd = async (itemId: string, sellerId: string) => {
-    if (!user || user.id !== sellerId) return;
+    if (!canManageItem(sellerId)) return;
+    if (!confirm('Are you sure you want to delete this listing?')) return;
     try {
       await deleteDoc(doc(db, 'marketplace_items', itemId));
       if (selectedDetailItem?.id === itemId) {
@@ -144,7 +254,7 @@ export default function Marketplace() {
 
   // Toggle Sold Status
   const handleToggleSoldStatus = async (item: MarketplaceItem) => {
-    if (!user || user.id !== item.sellerId) return;
+    if (!canManageItem(item.sellerId)) return;
     const newStatus = item.status === 'sold' ? 'active' : 'sold';
     try {
       await updateDoc(doc(db, 'marketplace_items', item.id), { status: newStatus });
@@ -160,7 +270,10 @@ export default function Marketplace() {
   // Message Seller with Pre-canned Quick Chips (Jiji Style)
   const handleMessageSeller = async (sellerId: string, customText?: string) => {
     if (!user) return navigate('/login');
-    if (user.id === sellerId) return alert('You cannot message yourself.');
+    if (user.id === sellerId) {
+      toast.error('You cannot message yourself.');
+      return;
+    }
     
     setIsSendingMessage(true);
     try {
@@ -203,13 +316,23 @@ export default function Marketplace() {
         });
       }
 
+      // Send instant push & in-app notification to the seller
+      await sendInAppNotification({
+        userId: sellerId,
+        title: `Marketplace Inquiry from ${user.displayName || 'Buyer'}`,
+        body: customText || `Hello, I'm interested in your marketplace item.`,
+        link: `/messages?chat=${targetChatId}`,
+        type: 'message'
+      });
+
+      toast.success('Inquiry sent! Seller received real-time notification.');
       setIsSendingMessage(false);
       setSelectedDetailItem(null);
       navigate(`/messages?chat=${targetChatId}`);
     } catch (e) {
       console.error(e);
       setIsSendingMessage(false);
-      alert('Failed to start chat.');
+      toast.error('Failed to start chat.');
     }
   };
 
@@ -288,7 +411,10 @@ export default function Marketplace() {
   const handlePostAd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return navigate('/login');
-    if (!selectedImage) return alert('Please select at least one image.');
+    if (!selectedImage) {
+      toast.error('Please select at least one photo.');
+      return;
+    }
     
     setIsSubmitting(true);
     try {
@@ -296,11 +422,23 @@ export default function Marketplace() {
       const userPhone = userDoc.exists() ? userDoc.data().phone || '' : '';
 
       const imageUrl = await uploadToCloudinary(selectedImage);
+
+      // Handle optional 10-second inspection video
+      let finalVideoUrl = videoUrlInput.trim();
+      if (selectedVideoFile) {
+        try {
+          finalVideoUrl = await uploadVideoToCloudinary(selectedVideoFile);
+        } catch (vidErr) {
+          console.warn('Video upload error:', vidErr);
+          toast.error('Video upload failed, continuing with photo listing.');
+        }
+      }
       
       const newItem: Omit<MarketplaceItem, 'id'> = {
         sellerId: user.id,
         sellerName: user.displayName,
         sellerPhone: userPhone,
+        whatsappNumber: whatsappNumberInput.trim() || userPhone,
         title,
         description,
         price: Number(price),
@@ -311,26 +449,33 @@ export default function Marketplace() {
         state: stateName,
         city: cityName,
         status: 'active',
+        isDistressSale: isDistressSale,
+        distressReason: isDistressSale ? distressReason : undefined,
+        videoUrl: finalVideoUrl || undefined,
+        recommendedArtisanTrade: recommendedTradeInput.trim() || undefined,
         createdAt: Date.now()
       };
 
       await addDoc(collection(db, 'marketplace_items'), newItem);
       setIsPosting(false);
+      toast.success('Your ad has been posted live on 9jaKonet Marketplace!');
       
       // Check bank setup
       const bankName = userDoc.exists() ? userDoc.data().bankName : null;
       if (!bankName || bankName === 'Not Set' || bankName === '') {
         setTimeout(() => {
-          alert('Item Posted! IMPORTANT: Please click the "Bank Details" button in the marketplace to add your bank account. You cannot receive payments from buyers without it!');
-        }, 500);
+          toast.info('Item Posted! Please click "Bank Details" to set up your payout account.');
+        }, 800);
       }
       
       // Reset form
       setTitle(''); setDescription(''); setPrice(''); setCityName(''); setCategory(''); setSelectedImage(null);
+      setSelectedVideoFile(null); setVideoUrlInput(''); setWhatsappNumberInput('');
+      setIsDistressSale(false); setRecommendedTradeInput('');
       setIsNegotiable(true);
     } catch (err) {
       console.error(err);
-      alert('Failed to post ad. Please try again.');
+      toast.error('Failed to post ad. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -338,11 +483,14 @@ export default function Marketplace() {
 
   // Filtering Logic
   const myItemsCount = user ? items.filter(i => i.sellerId === user.id).length : 0;
+  const distressCount = items.filter(i => i.status === 'active' && i.isDistressSale).length;
 
   const filteredItems = items.filter(item => {
     // Tab filter
     if (activeTab === 'my_ads') {
       if (!user || item.sellerId !== user.id) return false;
+    } else if (activeTab === 'distress') {
+      if (item.status !== 'active' || !item.isDistressSale) return false;
     } else {
       // In 'all' tab, only show active items
       if (item.status !== 'active') return false;
@@ -398,6 +546,18 @@ export default function Marketplace() {
           </div>
           
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {canManageItem() && (
+              <Button 
+                onClick={() => setShowSeedDialog(true)}
+                disabled={isSeeding}
+                variant="outline"
+                className="h-11 px-3.5 text-xs font-bold border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-xl flex items-center gap-1.5"
+                title="Populate 30 realistic Nigerian marketplace deals"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                Seed 30 Deals
+              </Button>
+            )}
             {user && (
               <Button 
                 onClick={() => navigate('/wallet')} 
@@ -538,9 +698,31 @@ export default function Marketplace() {
           </div>
         </div>
 
-        {/* Feed Tabs: All Listings vs My Adverts */}
+        {/* Push Notification Banner */}
+        {!hasNotificationPermission && typeof Notification !== 'undefined' && Notification.permission === 'default' && (
+          <div className="mb-5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <Bell className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold text-emerald-950">Never Miss a Buyer or Bargain Offer</p>
+                <p className="text-[11px] sm:text-xs text-emerald-800">Enable real-time push alerts for instant marketplace messages, inspection requests, and offers.</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleEnableNotifications}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-4 rounded-xl shrink-0 shadow-xs"
+            >
+              Enable Instant Alerts
+            </Button>
+          </div>
+        )}
+
+        {/* Feed Tabs: All Listings vs Distress Sales vs My Adverts */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-6">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 sm:gap-4">
             <button
               onClick={() => setActiveTab('all')}
               className={`text-sm sm:text-base font-bold pb-2 relative transition-colors ${
@@ -552,6 +734,22 @@ export default function Marketplace() {
               All Items ({items.filter(i => i.status === 'active').length})
               {activeTab === 'all' && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600 rounded-full" />
+              )}
+            </button>
+
+            {/* Distress / Relocation Sales Tab */}
+            <button
+              onClick={() => setActiveTab('distress')}
+              className={`text-sm sm:text-base font-bold pb-2 relative transition-colors flex items-center gap-1.5 ${
+                activeTab === 'distress' 
+                  ? 'text-red-700' 
+                  : 'text-slate-500 hover:text-red-600'
+              }`}
+            >
+              <Flame className="w-4 h-4 text-orange-500 animate-pulse" />
+              <span>Distress Sales ({distressCount})</span>
+              {activeTab === 'distress' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-full" />
               )}
             </button>
 
@@ -584,28 +782,69 @@ export default function Marketplace() {
             <p className="text-sm font-semibold text-slate-600">Loading marketplace items...</p>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="text-center py-16 px-4 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-lg mx-auto">
-            <Store className="w-14 h-14 mx-auto text-slate-300 mb-3" />
-            <h3 className="text-lg font-bold text-slate-800">No items found</h3>
-            <p className="text-sm text-slate-500 mt-1 mb-5">
-              {activeTab === 'my_ads' 
-                ? "You haven't posted any adverts yet."
-                : "No matching items for this location or category. Try clearing your search!"}
-            </p>
-            <div className="flex justify-center gap-3">
-              {activeTab === 'my_ads' ? (
-                <Button onClick={() => setIsPosting(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-                  Post Your First Ad
-                </Button>
-              ) : (
+          <div className="text-center py-14 px-5 bg-white rounded-2xl border border-slate-200 shadow-sm max-w-lg mx-auto">
+            {activeTab === 'my_ads' ? (
+              <>
+                <Store className="w-14 h-14 mx-auto text-slate-300 mb-3" />
+                <h3 className="text-lg font-bold text-slate-800">You haven't posted any adverts yet</h3>
+                <p className="text-sm text-slate-500 mt-1 mb-5">
+                  Turn unused household items, phones, cars, or gadgets into instant cash! Free until Nov 1st.
+                </p>
+                <div className="flex justify-center">
+                  <Button onClick={() => setIsPosting(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Post Your First Ad
+                  </Button>
+                </div>
+              </>
+            ) : items.length === 0 ? (
+              <>
+                <div className="w-16 h-16 mx-auto bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-3.5 shadow-xs">
+                  <Store className="w-8 h-8" />
+                </div>
+                <div className="inline-block px-3 py-1 bg-amber-100 text-amber-900 text-xs font-bold rounded-full mb-3 border border-amber-300">
+                  🔥 LAUNCH PROMO: UNLIMITED FREE LISTINGS UNTIL NOV 1ST
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">Be The First To Sell Here!</h3>
+                <p className="text-sm text-slate-600 mt-1.5 mb-6 leading-relaxed">
+                  No adverts have been posted in the marketplace yet. Be among the first sellers to list phones, generators, electronics, cars, or fashion!
+                </p>
+                <div className="flex flex-col sm:flex-row justify-center gap-3">
+                  <Button 
+                    onClick={() => user ? setIsPosting(true) : navigate('/login')} 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 px-5 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Post Your Ad (100% Free)
+                  </Button>
+                  <Button 
+                    onClick={() => setShowSeedDialog(true)}
+                    disabled={isSeeding}
+                    variant="outline"
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold h-11 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Populate 30 Sample Deals (Demo)
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Store className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                <h3 className="text-lg font-bold text-slate-800">
+                  {selectedState !== 'All Nigeria' ? `No items found in ${selectedState}` : 'No matching items'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1.5 mb-5">
+                  There are no items matching this search in {selectedState}. We have {items.length} {items.length === 1 ? 'item' : 'items'} available across Nigeria!
+                </p>
                 <Button 
                   onClick={() => { setSelectedState('All Nigeria'); setSelectedCategory('All'); setSearch(''); }} 
-                  variant="outline"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                 >
-                  View All Nigeria
+                  View All {items.length} Items Across Nigeria
                 </Button>
-              )}
-            </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5">
@@ -623,16 +862,29 @@ export default function Marketplace() {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   
-                  {/* Status: Sold vs Just Listed */}
+                  {/* Status: Sold vs Distress vs Just Listed */}
                   {item.status === 'sold' ? (
                     <div className="absolute top-2 left-2 bg-red-600/95 backdrop-blur-xs px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold text-white tracking-wide shadow-sm">
                       SOLD
+                    </div>
+                  ) : item.isDistressSale ? (
+                    <div className="absolute top-2 left-2 bg-gradient-to-r from-red-600 to-amber-600 px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-black text-white tracking-wide shadow-md flex items-center gap-1">
+                      <Flame className="w-3 h-3 text-yellow-200" />
+                      <span>DISTRESS</span>
                     </div>
                   ) : (Date.now() - item.createdAt) < (24 * 60 * 60 * 1000) ? (
                     <div className="absolute top-2 left-2 bg-emerald-600/90 backdrop-blur-xs px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-semibold text-white tracking-wide shadow-sm">
                       Just listed
                     </div>
                   ) : null}
+
+                  {/* 10-Second Video Clip Badge */}
+                  {item.videoUrl && (
+                    <div className="absolute bottom-2 left-2 bg-slate-950/85 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shadow-sm">
+                      <Play className="w-2.5 h-2.5 fill-current text-emerald-400" />
+                      <span>10s Video</span>
+                    </div>
+                  )}
 
                   {/* Condition Badge (Jiji Style: Tokunbo, Nigerian Used, New) */}
                   <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold shadow-xs border ${getConditionColor(item.condition)}`}>
@@ -674,15 +926,15 @@ export default function Marketplace() {
 
                   {/* Quick Action Footer */}
                   <div className="pt-2.5 border-t border-slate-100 mt-auto">
-                    {user?.id === item.sellerId ? (
+                    {canManageItem(item.sellerId) ? (
                       <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
                         <Button 
                           size="sm"
                           variant="outline"
                           onClick={() => handleToggleSoldStatus(item)}
-                          className="flex-1 text-[11px] h-8 font-semibold border-slate-200"
+                          className={`flex-1 text-[11px] h-8 font-bold border ${item.status === 'sold' ? 'text-emerald-700 bg-emerald-50 border-emerald-300' : 'text-amber-800 bg-amber-50 border-amber-300'}`}
                         >
-                          {item.status === 'sold' ? 'Mark Active' : 'Mark Sold'}
+                          {item.status === 'sold' ? '✓ Mark Active' : 'Mark Sold'}
                         </Button>
                         <Button 
                           size="sm"
@@ -694,34 +946,70 @@ export default function Marketplace() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
+                    ) : item.status === 'sold' ? (
+                      <div className="flex items-center justify-between" onClick={e => e.stopPropagation()}>
+                        <span className="text-[11px] text-slate-500 truncate mr-1">
+                          {item.sellerName?.split(' ')[0] || 'Seller'}
+                        </span>
+                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                          SOLD OUT
+                        </span>
+                      </div>
                     ) : (
                       <div className="flex items-center justify-between" onClick={e => e.stopPropagation()}>
                         <span className="text-[11px] text-slate-500 truncate mr-1">
                           {item.sellerName?.split(' ')[0] || 'Seller'}
                         </span>
-                        <div className="flex gap-1.5">
+                        <div className="flex items-center gap-1">
+                          {/* Artisan Inspection Bridge */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInspectionTargetItem(item);
+                              setShowInspectionModal(true);
+                            }}
+                            className="inline-flex items-center justify-center p-1.5 bg-amber-50 text-amber-800 rounded-lg hover:bg-amber-100 transition-colors border border-amber-200"
+                            title="Book Artisan to Inspect Item"
+                          >
+                            <Wrench className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* WhatsApp Direct Inquiry */}
+                          {(() => {
+                            const waUrl = formatWhatsAppUrl(
+                              item.whatsappNumber || item.sellerPhone,
+                              `Hello! I saw your "${item.title}" listed on 9jaKonet for ₦${item.price.toLocaleString()} in ${item.city}, ${item.state}. Is it still available?`
+                            );
+                            if (!waUrl) return null;
+                            return (
+                              <a 
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-xs"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </a>
+                            );
+                          })()}
+
+                          {/* In-App Chat */}
                           <button 
                             onClick={() => handleMessageSeller(item.sellerId)}
                             className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                             title="Chat with Seller"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            <MessageCircle className="w-3.5 h-3.5" />
                           </button>
-                          {item.sellerPhone && (
-                            <a 
-                              href={`tel:${item.sellerPhone}`} 
-                              className="inline-flex items-center justify-center p-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
-                              title="Call Seller"
-                            >
-                              <Phone className="w-4 h-4" />
-                            </a>
-                          )}
+
+                          {/* Buy with Escrow */}
                           <Button 
                             size="sm"
                             onClick={() => user ? setCheckoutItem(item) : navigate('/login')}
-                            className="bg-slate-900 hover:bg-slate-800 text-white text-[11px] h-8 px-2.5 rounded-lg flex items-center gap-1"
+                            className="bg-slate-900 hover:bg-slate-800 text-white text-[11px] h-8 px-2 rounded-lg flex items-center gap-1"
                           >
-                            <ShieldCheck className="w-3 h-3" />
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
                             Escrow
                           </Button>
                         </div>
@@ -766,22 +1054,90 @@ export default function Marketplace() {
             </div>
 
             <div className="p-4 sm:p-6 space-y-5">
-              {/* Main Image */}
-              <div className="relative rounded-xl overflow-hidden bg-slate-100 aspect-4/3 sm:aspect-16/9 max-h-80 w-full">
-                <img 
-                  src={selectedDetailItem.images[0] || 'https://via.placeholder.com/600x400?text=No+Image'} 
-                  alt={selectedDetailItem.title} 
-                  className="w-full h-full object-contain bg-slate-900/5"
-                />
-                <div className={`absolute top-3 right-3 px-3 py-1 rounded-lg text-xs font-bold shadow-md border ${getConditionColor(selectedDetailItem.condition)}`}>
-                  {getConditionLabel(selectedDetailItem.condition)}
+              {/* Media Switcher Tab (if video clip exists) */}
+              {selectedDetailItem.videoUrl && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMediaTab('photo')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      mediaTab === 'photo' 
+                        ? 'bg-slate-900 text-white shadow-xs' 
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    📷 Photos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMediaTab('video')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      mediaTab === 'video' 
+                        ? 'bg-emerald-600 text-white shadow-xs' 
+                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <Video className="w-3.5 h-3.5" />
+                    🎥 10-Second Inspection Clip
+                  </button>
                 </div>
-                {selectedDetailItem.status === 'sold' && (
-                  <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-lg shadow-md">
-                    ITEM SOLD
+              )}
+
+              {/* Main Media Display */}
+              {mediaTab === 'video' && selectedDetailItem.videoUrl ? (
+                <div className="relative rounded-xl overflow-hidden bg-black aspect-4/3 sm:aspect-16/9 max-h-80 w-full flex items-center justify-center">
+                  <video 
+                    controls 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    src={selectedDetailItem.videoUrl} 
+                    className="w-full h-full object-contain"
+                  />
+                  <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-xs text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <Play className="w-3 h-3 text-emerald-400 fill-current" />
+                    <span>Inspection Video Clip</span>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="relative rounded-xl overflow-hidden bg-slate-100 aspect-4/3 sm:aspect-16/9 max-h-80 w-full">
+                  <img 
+                    src={selectedDetailItem.images[0] || 'https://via.placeholder.com/600x400?text=No+Image'} 
+                    alt={selectedDetailItem.title} 
+                    className="w-full h-full object-contain bg-slate-900/5"
+                  />
+                  <div className={`absolute top-3 right-3 px-3 py-1 rounded-lg text-xs font-bold shadow-md border ${getConditionColor(selectedDetailItem.condition)}`}>
+                    {getConditionLabel(selectedDetailItem.condition)}
+                  </div>
+                  {selectedDetailItem.status === 'sold' && (
+                    <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs px-3 py-1 rounded-lg shadow-md">
+                      ITEM SOLD
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Urgent Distress / Relocation Sale Banner */}
+              {selectedDetailItem.isDistressSale && (
+                <div className="bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 text-white p-3.5 rounded-xl shadow-sm flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                      <Flame className="w-5 h-5 text-yellow-200 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="font-black text-xs sm:text-sm uppercase tracking-wide flex items-center gap-1.5">
+                        <span>Urgent Distress / Relocation Sale</span>
+                      </p>
+                      <p className="text-xs text-amber-100 font-medium">
+                        {selectedDetailItem.distressReason || 'Seller is relocating or requires fast cash clearance.'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="bg-white/25 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shrink-0 uppercase tracking-wider">
+                    Priced to Go
+                  </span>
+                </div>
+              )}
 
               {/* Title, Price, Badges */}
               <div>
@@ -827,6 +1183,34 @@ export default function Marketplace() {
                 <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">
                   {selectedDetailItem.description || 'No additional description provided.'}
                 </p>
+              </div>
+
+              {/* Artisan Bridge: Book an Artisan to Inspect / Install This Item */}
+              <div className="bg-gradient-to-br from-amber-50 via-orange-50/50 to-amber-50/20 border-2 border-amber-300/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                    <Wrench className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">
+                      Book an Artisan to Inspect / Install This Item
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                      Need a verified <strong>9jaKonet {getRecommendedTradeForItem(selectedDetailItem)}</strong> in {selectedDetailItem.state} to inspect engine/electricals, verify genuine parts, or install this for you before payment?
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setInspectionTargetItem(selectedDetailItem);
+                    setShowInspectionModal(true);
+                  }}
+                  className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-10 px-4 rounded-xl shrink-0 shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  Book Inspection
+                </Button>
               </div>
 
               {/* 9jaKonet Escrow Protection Notice */}
@@ -900,9 +1284,47 @@ export default function Marketplace() {
               )}
 
               {/* Action Buttons */}
-              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                {user?.id !== selectedDetailItem.sellerId ? (
-                  <>
+              <div className="pt-2 flex flex-col gap-3">
+                {/* Admin/Owner Quick Controls */}
+                {canManageItem(selectedDetailItem.sellerId) && (
+                  <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-emerald-600" />
+                      <span>Item Management:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${selectedDetailItem.status === 'sold' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {selectedDetailItem.status === 'sold' ? 'Sold' : 'Active'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleToggleSoldStatus(selectedDetailItem)}
+                        variant="outline"
+                        className={`h-8 font-bold text-xs ${selectedDetailItem.status === 'sold' ? 'text-emerald-700 bg-emerald-50 border-emerald-300' : 'text-amber-900 bg-amber-50 border-amber-300'}`}
+                      >
+                        {selectedDetailItem.status === 'sold' ? '✓ Mark as Active' : 'Mark as Sold'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleDeleteAd(selectedDetailItem.id, selectedDetailItem.sellerId)}
+                        variant="outline"
+                        className="h-8 px-2.5 text-red-600 hover:bg-red-50 border-red-200 font-bold text-xs flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Buyer Actions or Sold Banner */}
+                {selectedDetailItem.status === 'sold' ? (
+                  <div className="w-full py-3.5 px-4 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold text-center text-sm flex items-center justify-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                    This item has been marked as SOLD
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-2.5 w-full">
                     <Button
                       onClick={() => user ? setCheckoutItem(selectedDetailItem) : navigate('/login')}
                       className="flex-1 bg-slate-950 hover:bg-slate-800 text-white font-bold h-12 rounded-xl flex items-center justify-center gap-2 shadow-md"
@@ -911,33 +1333,35 @@ export default function Marketplace() {
                       Buy with Escrow (₦{selectedDetailItem.price.toLocaleString()})
                     </Button>
 
+                    {/* WhatsApp Direct Chat Button */}
+                    {(() => {
+                      const waUrl = formatWhatsAppUrl(
+                        selectedDetailItem.whatsappNumber || selectedDetailItem.sellerPhone,
+                        `Hello! I saw your "${selectedDetailItem.title}" listed on 9jaKonet for ₦${selectedDetailItem.price.toLocaleString()} in ${selectedDetailItem.city}, ${selectedDetailItem.state}. Is it still available?`
+                      );
+                      if (!waUrl) return null;
+                      return (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 px-5 h-12 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          Chat on WhatsApp
+                        </a>
+                      );
+                    })()}
+
                     {selectedDetailItem.sellerPhone && (
                       <a
                         href={`tel:${selectedDetailItem.sellerPhone}`}
-                        className="inline-flex items-center justify-center gap-2 px-5 h-12 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                        className="inline-flex items-center justify-center gap-2 px-5 h-12 rounded-xl font-bold text-xs sm:text-sm bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors"
                       >
                         <Phone className="w-4 h-4" />
                         Call Seller
                       </a>
                     )}
-                  </>
-                ) : (
-                  <div className="w-full flex gap-3">
-                    <Button
-                      onClick={() => handleToggleSoldStatus(selectedDetailItem)}
-                      variant="outline"
-                      className="flex-1 h-12 font-bold text-sm"
-                    >
-                      {selectedDetailItem.status === 'sold' ? 'Mark as Active' : 'Mark as Sold'}
-                    </Button>
-                    <Button
-                      onClick={() => handleDeleteAd(selectedDetailItem.id, selectedDetailItem.sellerId)}
-                      variant="outline"
-                      className="h-12 px-5 text-red-600 hover:bg-red-50 border-red-200 font-bold text-sm flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete Ad
-                    </Button>
                   </div>
                 )}
               </div>
@@ -1069,6 +1493,98 @@ export default function Marketplace() {
                 <label htmlFor="negotiable-checkbox" className="text-xs font-medium text-slate-700 cursor-pointer">
                   Price is negotiable (buyers can make bargaining offers)
                 </label>
+              </div>
+
+              {/* Urgent Distress / Relocation Sale Section */}
+              <div className="p-3.5 bg-gradient-to-r from-red-50/70 to-orange-50/70 rounded-xl border border-red-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-red-600" />
+                    <label htmlFor="distress-checkbox" className="text-xs font-bold text-slate-900 cursor-pointer">
+                      Tag as Urgent Distress / Relocation Sale
+                    </label>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="distress-checkbox"
+                    checked={isDistressSale}
+                    onChange={e => setIsDistressSale(e.target.checked)}
+                    className="w-4 h-4 text-red-600 rounded focus:ring-red-500 border-slate-300 cursor-pointer"
+                  />
+                </div>
+                {isDistressSale && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Reason for Quick Sale</label>
+                    <select
+                      value={distressReason}
+                      onChange={e => setDistressReason(e.target.value)}
+                      className="w-full h-9 px-3 rounded-md border border-red-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
+                    >
+                      <option value="Relocating abroad (Japa Sale)">Relocating abroad (Japa Sale)</option>
+                      <option value="Relocating to another state">Relocating to another state</option>
+                      <option value="Urgent cash clearance / Moving out">Urgent cash clearance / Moving out</option>
+                      <option value="Office / Shop closing down liquidation">Office / Shop closing down liquidation</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* WhatsApp Direct Contact Number */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  WhatsApp Direct Number (Optional)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-600">
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <Input
+                    type="tel"
+                    value={whatsappNumberInput}
+                    onChange={e => setWhatsappNumberInput(e.target.value)}
+                    placeholder="e.g. 08012345678 (enables instant WhatsApp buyer chats)"
+                    className="text-xs pl-9"
+                  />
+                </div>
+              </div>
+
+              {/* 10-Second Video Inspection Clip Upload */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Video className="w-4 h-4 text-emerald-600" />
+                  <label className="text-xs font-bold text-slate-800">
+                    10-Second Video Inspection Clip (Optional)
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Upload a brief 10-second video of the car engine running, phone screen functioning, or gadget powering on. Boosts buyer trust by 80%!
+                </p>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={e => setSelectedVideoFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-800 hover:file:bg-slate-300"
+                />
+              </div>
+
+              {/* Artisan Pre-Purchase Inspection Recommendation */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Recommended Artisan Trade for Inspection (Optional)
+                </label>
+                <select
+                  value={recommendedTradeInput}
+                  onChange={e => setRecommendedTradeInput(e.target.value)}
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">Auto-detect from Category</option>
+                  {POPULAR_INSPECTION_TRADES.map(trade => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Pairs buyers with a verified 9jaKonet artisan (e.g. auto mechanic, AC technician) to inspect before final payment.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1205,6 +1721,129 @@ export default function Marketplace() {
           </div>
         </div>
       )}
+
+      {/* 30 Marketplace Items Seeder Modal (In-App UI, immune to iframe popup blocking) */}
+      {showSeedDialog && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl border border-slate-200">
+            <button 
+              onClick={() => { if (!isSeeding) setShowSeedDialog(false); }} 
+              disabled={isSeeding}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 disabled:opacity-40 p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                <Sparkles className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">Populate 30 Marketplace Deals</h3>
+                <p className="text-xs text-slate-500">Live camouflage deals with realistic Nigerian specs & prices</p>
+              </div>
+            </div>
+
+            {!user ? (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-xl text-xs space-y-1.5">
+                  <p className="font-bold text-sm">Please Log In First</p>
+                  <p>You need to be signed in to add deals to the live Firestore database. Log in with your admin account (<strong>ayorindesamuel705@gmail.com</strong>) to manage and toggle them as Sold/Active.</p>
+                </div>
+                <Button 
+                  onClick={() => navigate('/login')}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl text-xs"
+                >
+                  Log In Now
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  This will populate <strong>30 popular Nigerian listings</strong> across Phones, Laptops, Generators, Solar Systems, Cars, Appliances, Sofas, Industrial Machines, and Fashion. 
+                  All items are directly linked to your account so you can mark them as <strong>Sold</strong> or <strong>Active</strong> with one click.
+                </p>
+
+                {items.length > 0 && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Current marketplace listings:</span>
+                    <span className="font-bold text-slate-900 bg-white px-2.5 py-0.5 rounded border border-slate-200">
+                      {items.length} items
+                    </span>
+                  </div>
+                )}
+
+                {/* Progress Bar during seeding */}
+                {isSeeding && seedProgress && (
+                  <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
+                        Adding deal {seedProgress.current} of {seedProgress.total}...
+                      </span>
+                      <span>{Math.round((seedProgress.current / seedProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-amber-200 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-amber-600 h-full transition-all duration-150 rounded-full" 
+                        style={{ width: `${Math.max(5, (seedProgress.current / seedProgress.total) * 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-amber-800 truncate font-medium">
+                      {seedProgress.title}
+                    </p>
+                  </div>
+                )}
+
+                {seedSuccessMsg && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{seedSuccessMsg}</span>
+                  </div>
+                )}
+
+                {seedErrorMsg && (
+                  <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-semibold">
+                    {seedErrorMsg}
+                  </div>
+                )}
+
+                {!isSeeding && !seedSuccessMsg && (
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                    <Button
+                      onClick={() => handleExecuteSeed(false)}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl text-xs shadow-sm flex items-center justify-center gap-1.5"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Add 30 Deals (Append)
+                    </Button>
+                    {items.length > 0 && (
+                      <Button
+                        onClick={() => handleExecuteSeed(true)}
+                        variant="outline"
+                        className="border-slate-300 text-slate-700 hover:bg-slate-100 font-bold h-11 rounded-xl text-xs"
+                      >
+                        Reset & Add 30 Deals
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Book Verified Artisan Inspection Modal (Bridge between Marketplace and Artisans) */}
+      <BookInspectionModal
+        isOpen={showInspectionModal}
+        onClose={() => {
+          setShowInspectionModal(false);
+          setInspectionTargetItem(null);
+        }}
+        item={inspectionTargetItem}
+        user={user}
+      />
     </div>
   );
 }

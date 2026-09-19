@@ -142,6 +142,7 @@ export interface MarketplaceItem {
   sellerName: string;
   sellerPhone?: string;
   sellerAvatar?: string;
+  whatsappNumber?: string;
   title: string;
   description: string;
   price: number;
@@ -152,5 +153,20 @@ export interface MarketplaceItem {
   state: string;
   city: string;
   status: 'active' | 'sold';
+  createdAt: number;
+  isDistressSale?: boolean;
+  distressReason?: string;
+  videoUrl?: string;
+  recommendedArtisanTrade?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  link?: string;
+  type?: 'offer' | 'message' | 'inspection_request' | 'escrow' | 'general';
+  read: boolean;
   createdAt: number;
 }

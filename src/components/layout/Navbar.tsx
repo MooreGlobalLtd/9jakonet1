@@ -38,16 +38,27 @@ export default function Navbar() {
       setUnreadChatsCount(count);
     });
 
-    // 2. Real-time Notifications (Escrows)
+    // 2. Real-time Notifications (Escrows & Marketplace Direct Alerts)
     const fieldQuery = user.role === 'customer' ? 'customerId' : 'artisanId';
     const qEscrows = query(collection(db, 'escrows'), where(fieldQuery, '==', user.id));
+    const qDirectNotifs = query(collection(db, 'notifications'), where('userId', '==', user.id));
     
+    let escrowNotifs: any[] = [];
+    let directNotifs: any[] = [];
+
+    const updateCombinedNotifs = () => {
+      const combined = [...escrowNotifs, ...directNotifs];
+      combined.sort((a, b) => b.time - a.time);
+      setNotifications(combined.slice(0, 8));
+      setUnreadNotifCount(combined.filter(n => !n.isRead).length);
+    };
+
     const unsubscribeEscrows = onSnapshot(qEscrows, (snapshot) => {
-       const notifs: any[] = [];
+       escrowNotifs = [];
        snapshot.forEach((doc) => {
           const data = doc.data();
           if (data.status === 'pending_escrow') {
-             notifs.push({
+             escrowNotifs.push({
                id: doc.id + '_pending',
                text: user.role === 'customer' ? `Fund escrow for ${data.title}` : `Customer created escrow for ${data.title}`,
                time: data.createdAt,
@@ -56,7 +67,7 @@ export default function Navbar() {
              });
           }
           if (data.status === 'in_progress' && user.role === 'artisan') {
-             notifs.push({
+             escrowNotifs.push({
                id: doc.id + '_progress',
                text: `Escrow funded for ${data.title}! You can start working.`,
                time: data.createdAt + 1000,
@@ -65,7 +76,7 @@ export default function Navbar() {
              });
           }
           if (data.status === 'completed') {
-             notifs.push({
+             escrowNotifs.push({
                id: doc.id + '_completed',
                text: `Job ${data.title} marked completed. Funds released.`,
                time: data.createdAt + 2000,
@@ -74,16 +85,28 @@ export default function Navbar() {
              });
           }
        });
-       
-       // Sort by time descending
-       notifs.sort((a, b) => b.time - a.time);
-       setNotifications(notifs.slice(0, 5));
-       setUnreadNotifCount(notifs.filter(n => !n.isRead).length);
+       updateCombinedNotifs();
+    });
+
+    const unsubscribeDirectNotifs = onSnapshot(qDirectNotifs, (snapshot) => {
+      directNotifs = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        directNotifs.push({
+          id: doc.id,
+          text: data.title ? `${data.title}: ${data.body}` : data.body,
+          time: data.createdAt || Date.now(),
+          isRead: data.read || false,
+          link: data.link || '/marketplace'
+        });
+      });
+      updateCombinedNotifs();
     });
 
     return () => {
       unsubscribeChats();
       unsubscribeEscrows();
+      unsubscribeDirectNotifs();
     };
   }, [user]);
 
