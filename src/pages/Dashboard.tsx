@@ -31,19 +31,10 @@ export default function Dashboard() {
     if (res) {
       setPushStatus(res);
       if (res === 'granted') {
-        toast.success('Push notifications active! Sending test popup...');
-        sendTestPushNotification();
+        toast.success('Push notifications active! You will receive alerts on your phone lock screen.');
       } else {
         toast.error('Notification permission was denied.');
       }
-    }
-  };
-
-  const handleTestAlert = async () => {
-    toast.info('Sending test push notification...');
-    const ok = await sendTestPushNotification();
-    if (!ok) {
-      toast.error('Could not show notification. Please check browser permissions.');
     }
   };
 
@@ -274,20 +265,29 @@ export default function Dashboard() {
               </p>
               <div className="flex flex-col gap-2 pt-1">
                 {pushStatus === 'granted' ? (
-                  <Button 
-                    type="button" 
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestAlert}
-                    className="w-full text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5"
-                  >
-                    <Bell className="h-3.5 w-3.5" />
-                    Send Test Alert to Phone
-                  </Button>
+                  <div className="space-y-2">
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800 flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>Your phone is connected. You will automatically receive lock screen alerts for new chats, jobs, and platform updates.</span>
+                    </div>
+                    {user?.role === 'admin' && (
+                      <Link to="/admin#push-broadcast">
+                        <Button 
+                          type="button" 
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5 mt-2"
+                        >
+                          <Bell className="h-3.5 w-3.5" />
+                          Open Admin Push Dispatcher &rarr;
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
                 ) : (
                   <Button 
                     type="button" 
-                    size="sm"
+                    size="sm" 
                     onClick={handleTogglePush}
                     className="w-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5"
                   >

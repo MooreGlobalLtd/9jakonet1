@@ -27,19 +27,10 @@ export default function Navbar() {
     if (res) {
       setPushPerm(res);
       if (res === 'granted') {
-        toast.success('Push alerts enabled on this device!');
-        sendTestPushNotification();
+        toast.success('Phone push alerts enabled on this device!');
       } else {
         toast.error('Notifications permission denied in browser.');
       }
-    }
-  };
-
-  const handleTestPush = async () => {
-    toast.info('Sending test notification to your device...');
-    const ok = await sendTestPushNotification();
-    if (!ok) {
-      toast.error('Could not display test notification. Please enable permissions first.');
     }
   };
 
@@ -242,12 +233,14 @@ export default function Navbar() {
                           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                           <span>Phone Alerts Active</span>
                         </div>
-                        <button 
-                          onClick={handleTestPush}
-                          className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-medium text-[11px] transition-colors"
-                        >
-                          Test Alert
-                        </button>
+                        {user.role === 'admin' && (
+                          <Link 
+                            to="/admin#push-broadcast"
+                            className="text-emerald-700 hover:text-emerald-800 font-semibold text-[11px] underline"
+                          >
+                            Dispatcher &rarr;
+                          </Link>
+                        )}
                       </div>
                     ) : (
                       <button 
@@ -389,9 +382,10 @@ export default function Navbar() {
                   <span className="text-slate-700 font-medium">Phone Push Alerts</span>
                 </div>
                 {pushPerm === 'granted' ? (
-                  <button onClick={handleTestPush} className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded font-semibold hover:bg-emerald-200 transition-colors">
-                    Test Alert
-                  </button>
+                  <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs bg-emerald-100 px-2.5 py-1 rounded">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Active</span>
+                  </div>
                 ) : (
                   <button onClick={handleEnablePush} className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded font-semibold hover:bg-emerald-700 transition-colors">
                     Enable

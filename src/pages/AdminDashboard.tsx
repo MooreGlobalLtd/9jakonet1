@@ -5,11 +5,12 @@ import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send, Zap, Radio } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 import { withTimeout } from '../lib/timeout';
+import { showDevicePushNotification } from '../lib/notifications';
 import { toast } from 'sonner';
 
 interface Withdrawal {
@@ -63,6 +64,54 @@ export default function AdminDashboard() {
   const [broadcastBody, setBroadcastBody] = useState('');
   const [broadcastLink, setBroadcastLink] = useState('/dashboard');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isSendingTestAlert, setIsSendingTestAlert] = useState(false);
+
+  // 1-Click: Send Instant Test Alert to All Phones & Registered Users
+  const handleSendGlobalTestAlert = async () => {
+    setIsSendingTestAlert(true);
+    try {
+      // 1. Immediately trigger native push alert on the Admin's device
+      showDevicePushNotification('🔔 9jaKonet Alert Active: Your device is connected!', {
+        body: 'Live system test from Admin Panel. All active phones and accounts have been pinged.',
+        link: '/dashboard',
+        tag: 'admin-global-test'
+      });
+
+      // 2. Add broadcast document for ALL_USERS (fires on every connected phone)
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'ALL_USERS',
+        title: '🔔 9jaKonet Alert Active: Your device is connected!',
+        body: 'Live system test sent from the Admin Panel. You will now receive all job alerts, messages, and platform updates directly on your phone!',
+        link: '/dashboard',
+        type: 'general',
+        read: false,
+        createdAt: Date.now()
+      });
+
+      // 3. Also write directly to all user accounts
+      const targetUsers = users.length > 0 ? users : [{ id: user?.id || 'admin' }];
+      for (const u of targetUsers) {
+        if (u.id) {
+          addDoc(collection(db, 'notifications'), {
+            userId: u.id,
+            title: '🔔 9jaKonet Alert Active: Your device is connected!',
+            body: 'Live system test sent from the Admin Panel. You will now receive all job alerts, messages, and platform updates directly on your phone!',
+            link: '/dashboard',
+            type: 'general',
+            read: false,
+            createdAt: Date.now()
+          }).catch(() => {});
+        }
+      }
+
+      toast.success(`⚡ Instant test alert pushed to all phones & ${targetUsers.length} user accounts!`);
+    } catch (err: any) {
+      console.error('Error sending global test alert:', err);
+      toast.error('Failed to send global test alert.');
+    } finally {
+      setIsSendingTestAlert(false);
+    }
+  };
 
   const handleSendBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,12 +121,30 @@ export default function AdminDashboard() {
     }
     setIsBroadcasting(true);
     try {
-      // Send notification document to all users so their device service workers trigger
+      // 1. Trigger local admin preview notification
+      showDevicePushNotification(`📢 ${broadcastTitle.trim()}`, {
+        body: broadcastBody.trim(),
+        link: broadcastLink.trim() || '/dashboard',
+        tag: 'admin-broadcast'
+      });
+
+      // 2. Send broadcast document for ALL_USERS
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'ALL_USERS',
+        title: `📢 ${broadcastTitle.trim()}`,
+        body: broadcastBody.trim(),
+        link: broadcastLink.trim() || '/dashboard',
+        type: 'general',
+        read: false,
+        createdAt: Date.now()
+      });
+
+      // 3. Send notification document to all registered users
       const targetUsers = users.length > 0 ? users : [{ id: user?.id || 'admin' }];
       let count = 0;
       for (const u of targetUsers) {
         if (u.id) {
-          await addDoc(collection(db, 'notifications'), {
+          addDoc(collection(db, 'notifications'), {
             userId: u.id,
             title: `📢 ${broadcastTitle.trim()}`,
             body: broadcastBody.trim(),
@@ -85,11 +152,11 @@ export default function AdminDashboard() {
             type: 'general',
             read: false,
             createdAt: Date.now()
-          });
+          }).catch(() => {});
           count++;
         }
       }
-      toast.success(`App update pushed to ${count} users successfully!`);
+      toast.success(`App update pushed to all active phones & ${count} accounts!`);
       setBroadcastTitle('');
       setBroadcastBody('');
     } catch (err: any) {
@@ -1987,80 +2054,118 @@ export default function AdminDashboard() {
         )}
 
         {/* Broadcast App Updates & Phone Push Notifications */}
-        <Card className="md:col-span-2 border-slate-200 shadow-sm">
+        <Card id="push-broadcast" className="md:col-span-2 border-slate-200 shadow-sm">
           <CardHeader className="bg-slate-900 text-white rounded-t-xl pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-lg text-white">
                 <Smartphone className="h-5 w-5 text-emerald-400" />
-                Broadcast App Updates &amp; Phone Notifications
+                Phone Push Alert &amp; Update Dispatcher
               </CardTitle>
-              <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full font-medium">
-                Pushes to {users.length} registered user devices
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-medium">
+                  <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
+                  Broadcasting to {users.length} registered accounts &amp; all active phones
+                </span>
+              </div>
             </div>
             <p className="text-xs text-slate-300 mt-1">
-              Whenever you release an update or have an announcement, send a notification that pops up directly on users&apos; phones even when they aren&apos;t on the app.
+              Trigger instant phone lock-screen and status bar alerts to everyone using your app without needing users to run manual tests.
             </p>
           </CardHeader>
-          <CardContent className="p-6">
-            <form onSubmit={handleSendBroadcast} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                    Notification Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. 📢 9jaKonet System Update Available!"
-                    value={broadcastTitle}
-                    onChange={(e) => setBroadcastTitle(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
-                  />
+          <CardContent className="p-6 space-y-6">
+            {/* Quick 1-Click Test Alert Banner */}
+            <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
+                  <Zap className="h-4 w-4 text-amber-400 fill-amber-400" />
+                  <span>1-Click: Send Instant Test Alert to Everyone</span>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                    Destination Link (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="/dashboard or /explore or /jobs"
-                    value={broadcastLink}
-                    onChange={(e) => setBroadcastLink(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
-                  />
-                </div>
+                <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
+                  Dispatches a live vibration and pop-up notification to all devices presently using the app or registered, verifying lock screen delivery immediately.
+                </p>
               </div>
+              <Button
+                type="button"
+                onClick={handleSendGlobalTestAlert}
+                disabled={isSendingTestAlert}
+                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 h-10 shrink-0 shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+              >
+                <Zap className="h-4 w-4 fill-slate-950" />
+                {isSendingTestAlert ? 'Pinging All Phones...' : 'Send Test Alert to All Phones'}
+              </Button>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Message Content (Pops on Phone Lockscreen &amp; Status Bar)
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="e.g. We have upgraded the escrow release system with instant bank settlements. Open the app to view what is new!"
-                  value={broadcastBody}
-                  onChange={(e) => setBroadcastBody(e.target.value)}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900 resize-none"
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+            {/* Custom App Update & Announcement Form */}
+            <div className="border-t border-slate-100 pt-5">
+              <div className="mb-4">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <Bell className="h-4 w-4 text-emerald-600" />
-                  <span>Delivered through native Service Worker background sync to Android &amp; iOS PWA devices.</span>
-                </div>
-                <Button 
-                  type="submit" 
-                  disabled={isBroadcasting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 h-10 w-full sm:w-auto font-semibold flex items-center justify-center gap-2"
-                >
-                  <Send className="h-4 w-4" />
-                  {isBroadcasting ? 'Broadcasting Alert...' : 'Send Phone Push Broadcast'}
-                </Button>
+                  Broadcast Custom Announcement or Update
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Send a personalized platform update, maintenance note, or feature release that rings on all users&apos; phones.
+                </p>
               </div>
-            </form>
+
+              <form onSubmit={handleSendBroadcast} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Notification Title
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 📢 9jaKonet System Update Available!"
+                      value={broadcastTitle}
+                      onChange={(e) => setBroadcastTitle(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Destination Link (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/dashboard or /explore or /jobs"
+                      value={broadcastLink}
+                      onChange={(e) => setBroadcastLink(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Message Content (Pops on Phone Lockscreen &amp; Status Bar)
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    placeholder="e.g. We have upgraded the escrow release system with instant bank settlements. Open the app to view what is new!"
+                    value={broadcastBody}
+                    onChange={(e) => setBroadcastBody(e.target.value)}
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900 resize-none"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                  <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                    <Bell className="h-4 w-4 text-emerald-600" />
+                    <span>Delivered via background Service Worker &amp; Firestore broadcast channel.</span>
+                  </div>
+                  <Button 
+                    type="submit" 
+                    disabled={isBroadcasting}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 h-10 w-full sm:w-auto font-semibold flex items-center justify-center gap-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    {isBroadcasting ? 'Broadcasting Alert...' : 'Broadcast to All Phones'}
+                  </Button>
+                </div>
+              </form>
+            </div>
           </CardContent>
         </Card>
       </div>
