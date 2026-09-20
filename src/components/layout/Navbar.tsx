@@ -5,13 +5,43 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/button';
 import { PWAInstallButton } from '../PWAInstallButton';
-import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert, Bell, CheckCircle2 } from 'lucide-react';
+import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert, Bell, CheckCircle2, Smartphone } from 'lucide-react';
+import { requestBrowserNotificationPermission, sendTestPushNotification } from '../../lib/notifications';
+import { toast } from 'sonner';
 
 export default function Navbar() {
   const { user, signOut } = useAuthStore();
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [notifications, setNotifications] = useState<{id: string, text: string, time: number, isRead: boolean, link: string}[]>([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [pushPerm, setPushPerm] = useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      setPushPerm(Notification.permission);
+    }
+  }, []);
+
+  const handleEnablePush = async () => {
+    const res = await requestBrowserNotificationPermission();
+    if (res) {
+      setPushPerm(res);
+      if (res === 'granted') {
+        toast.success('Push alerts enabled on this device!');
+        sendTestPushNotification();
+      } else {
+        toast.error('Notifications permission denied in browser.');
+      }
+    }
+  };
+
+  const handleTestPush = async () => {
+    toast.info('Sending test notification to your device...');
+    const ok = await sendTestPushNotification();
+    if (!ok) {
+      toast.error('Could not display test notification. Please enable permissions first.');
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -205,9 +235,31 @@ export default function Navbar() {
                       </div>
                     )}
                   </div>
-                  <div className="p-2 border-t border-slate-100 bg-slate-50/50">
-                    <Link to="/dashboard" className="block text-center text-xs font-semibold text-emerald-600 hover:text-emerald-700 p-2">
-                      View Dashboard
+                  <div className="p-3 border-t border-slate-100 bg-slate-50 space-y-2">
+                    {pushPerm === 'granted' ? (
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 text-emerald-600 font-semibold">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>Phone Alerts Active</span>
+                        </div>
+                        <button 
+                          onClick={handleTestPush}
+                          className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-medium text-[11px] transition-colors"
+                        >
+                          Test Alert
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={handleEnablePush}
+                        className="w-full py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      >
+                        <Smartphone className="h-3.5 w-3.5" />
+                        <span>Enable Phone Push Alerts</span>
+                      </button>
+                    )}
+                    <Link to="/dashboard" className="block text-center text-xs font-medium text-slate-500 hover:text-slate-800 pt-1">
+                      Go to Dashboard &rarr;
                     </Link>
                   </div>
                 </div>
@@ -331,6 +383,21 @@ export default function Navbar() {
               <Link to="/dashboard" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Dashboard
               </Link>
+              <div className="px-3 py-2 bg-slate-50 rounded-lg flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="h-4 w-4 text-emerald-600" />
+                  <span className="text-slate-700 font-medium">Phone Push Alerts</span>
+                </div>
+                {pushPerm === 'granted' ? (
+                  <button onClick={handleTestPush} className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded font-semibold hover:bg-emerald-200 transition-colors">
+                    Test Alert
+                  </button>
+                ) : (
+                  <button onClick={handleEnablePush} className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded font-semibold hover:bg-emerald-700 transition-colors">
+                    Enable
+                  </button>
+                )}
+              </div>
               <Link to="/wallet" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Wallet: ₦{(user.walletBalance || 0).toLocaleString()}
               </Link>

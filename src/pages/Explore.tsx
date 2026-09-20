@@ -8,20 +8,39 @@ import { toast } from 'sonner';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { useAuthStore } from '../store/authStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
+import { sendInAppNotification } from '../lib/notifications';
 
 export default function Explore() {
+  const [searchParams] = useSearchParams();
+  const urlCategory = searchParams.get('category') || '';
+  const urlSearch = searchParams.get('search') || '';
+  const urlLocation = searchParams.get('location') || '';
+
   const [allArtisans, setAllArtisans] = useState<(ArtisanProfile & { user: User })[]>([]);
   const [artisans, setArtisans] = useState<(ArtisanProfile & { user: User })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [locationQuery, setLocationQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(urlCategory || urlSearch);
+  const [locationQuery, setLocationQuery] = useState(urlLocation);
   const [isLocating, setIsLocating] = useState(false);
   const [selectedArtisan, setSelectedArtisan] = useState<(ArtisanProfile & { user: User }) | null>(null);
   
   const { user } = useAuthStore();
   const navigate = useNavigate();
+
+  // Sync with URL query parameters when they change
+  useEffect(() => {
+    const cat = searchParams.get('category') || '';
+    const s = searchParams.get('search') || '';
+    const loc = searchParams.get('location') || '';
+    if (cat || s) {
+      setSearchQuery(cat || s);
+    }
+    if (loc) {
+      setLocationQuery(loc);
+    }
+  }, [searchParams]);
 
   
   const handleDetectLocation = () => {
@@ -215,6 +234,21 @@ export default function Explore() {
     );
   };
 
+  const handleViewProfile = (artisan: ArtisanProfile & { user: User }) => {
+    setSelectedArtisan(artisan);
+    if (artisan.userId && (!user || user.id !== artisan.userId)) {
+      sendInAppNotification({
+        userId: artisan.userId,
+        title: '👀 Profile Visitor Alert!',
+        body: user?.displayName 
+          ? `${user.displayName} is viewing your verified profile on 9jaKonet.`
+          : `A customer looking for ${artisan.tradeCategory || 'services'} is viewing your profile.`,
+        link: '/dashboard',
+        type: 'general'
+      });
+    }
+  };
+
   const handleMessageArtisan = async (artisanId: string) => {
     if (!user) {
       navigate('/login');
@@ -304,7 +338,7 @@ export default function Explore() {
           
           {/* Quick Filter Categories */}
           <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
-            {['AC Technician', 'Tailor', 'Plumber', 'Electrician', 'Cleaner', 'Mechanic', 'Carpenter'].map(cat => (
+            {['Electrician', 'Plumber', 'Mechanic', 'Painter', 'AC Technician', 'Carpenter', 'Tailor', 'Cleaner', 'Driver'].map(cat => (
               <button 
                 key={cat}
                 onClick={() => setSearchQuery(cat)}
@@ -317,12 +351,12 @@ export default function Explore() {
                 {cat}
               </button>
             ))}
-            {searchQuery && (
+            {(searchQuery || locationQuery) && (
               <button 
-                onClick={() => setSearchQuery('')}
+                onClick={() => { setSearchQuery(''); setLocationQuery(''); }}
                 className="text-[10px] sm:text-xs px-2.5 py-1 rounded-full font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors border border-red-100"
               >
-                Clear
+                Reset All
               </button>
             )}
           </div>
@@ -374,7 +408,7 @@ export default function Explore() {
                   </div>
                 </div>
                 <div className="border-t border-slate-100 bg-slate-50 p-4 flex gap-2">
-                  <Button className="flex-1 bg-slate-900 hover:bg-slate-800 text-white" onClick={() => setSelectedArtisan(artisan)}>View Profile</Button>
+                  <Button className="flex-1 bg-slate-900 hover:bg-slate-800 text-white" onClick={() => handleViewProfile(artisan)}>View Profile</Button>
                   <Button variant="outline" className="px-3 border-slate-200 hover:bg-slate-100 text-slate-700" onClick={() => handleMessageArtisan(artisan.userId)}>
                     <MessageCircle className="h-5 w-5" />
                   </Button>

@@ -1,5 +1,6 @@
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Star, ShieldCheck, Zap, Handshake, CheckCircle2, Quote, Stethoscope, Car, PenTool, Instagram, Twitter, Youtube } from 'lucide-react';
+import { Search, MapPin, Star, ShieldCheck, Zap, Handshake, CheckCircle2, Quote, Stethoscope, Car, PenTool } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { motion } from 'motion/react';
@@ -51,6 +52,16 @@ function PaintbrushIcon(props: any) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const [serviceQuery, setServiceQuery] = useState('');
+  const [locationQuery, setLocationQuery] = useState('');
+
+  const handleSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const params = new URLSearchParams();
+    if (serviceQuery.trim()) params.set('search', serviceQuery.trim());
+    if (locationQuery.trim()) params.set('location', locationQuery.trim());
+    navigate(`/explore${params.toString() ? `?${params.toString()}` : ''}`);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -108,7 +119,8 @@ export default function Home() {
             The safest way to hire verified electricians, plumbers, and carpenters. Money is held in Escrow until you are 100% satisfied with the work.
           </motion.p>
           
-          <motion.div 
+          <motion.form 
+            onSubmit={handleSearch}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.6 }}
@@ -116,21 +128,31 @@ export default function Home() {
           >
             <div className="relative flex-1">
               <Search className="absolute left-4 top-3.5 h-5 w-5 text-slate-400" />
-              <Input placeholder="What service do you need?" className="h-12 border-0 bg-white/10 pl-12 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-emerald-500" />
+              <Input 
+                value={serviceQuery}
+                onChange={(e) => setServiceQuery(e.target.value)}
+                placeholder="What service do you need? (e.g. Electrician)" 
+                className="h-12 border-0 bg-white/10 pl-12 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-emerald-500" 
+              />
             </div>
             <div className="hidden sm:block w-px bg-white/10 my-2" />
             <div className="relative flex-1">
               <MapPin className="absolute left-4 top-3.5 h-5 w-5 text-slate-400" />
-              <Input placeholder="Location (e.g. Ikeja, Lagos)" className="h-12 border-0 bg-white/10 pl-12 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-emerald-500" />
+              <Input 
+                value={locationQuery}
+                onChange={(e) => setLocationQuery(e.target.value)}
+                placeholder="Location (e.g. Ikeja, Lagos)" 
+                className="h-12 border-0 bg-white/10 pl-12 text-white placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-emerald-500" 
+              />
             </div>
             <Button 
+              type="submit"
               size="lg" 
               className="h-12 px-8 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40"
-              onClick={() => navigate('/explore')}
             >
               Search Pros
             </Button>
-          </motion.div>
+          </motion.form>
           
           <motion.div 
             initial={{ opacity: 0 }}
@@ -317,66 +339,6 @@ export default function Home() {
             </motion.div>
          </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 py-16 border-t border-white/5">
-        <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-slate-400">
-            <div>
-              <h3 className="text-white text-xl font-bold mb-4">9jaKonet</h3>
-              <p className="text-sm leading-relaxed mb-6">
-                The safest way to hire verified artisans in Nigeria. Zero risk, total trust.
-              </p>
-              <div className="flex gap-4">
-                <a href="https://www.instagram.com/9jakonet?stkn=dXN6Z29sczZucm03&utm_source=qr" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">
-                  <Instagram className="h-5 w-5" />
-                </a>
-                <a href="https://twitter.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors">
-                  <Twitter className="h-5 w-5" />
-                </a>
-                <a href="https://tiktok.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center font-bold text-lg leading-none">
-                  <span className="mb-1">tik</span><span className="mb-1">tok</span>
-                </a>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-white text-lg font-bold mb-4">Contact Us</h3>
-              <ul className="space-y-3 text-sm">
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-500 mt-0.5">✉</span>
-                  <a href="mailto:support@9jakonet.com" className="hover:text-emerald-400 transition-colors">
-                    support@9jakonet.com
-                  </a>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-500 mt-0.5">☎</span>
-                  <a href="tel:09021171832" className="hover:text-emerald-400 transition-colors">
-                    09021171832
-                  </a>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-emerald-500 mt-0.5">📍</span>
-                  <span>Lagos, Nigeria (Operating Nationwide)</span>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-white text-lg font-bold mb-4">Legal</h3>
-              <ul className="space-y-2 text-sm">
-                <li><Link to="/terms" className="hover:text-emerald-400 transition-colors">Terms of Service</Link></li>
-                <li><Link to="/privacy" className="hover:text-emerald-400 transition-colors">Privacy Policy</Link></li>
-                <li><Link to="/escrow-policy" className="hover:text-emerald-400 transition-colors">Escrow Policy</Link></li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="mt-12 pt-8 border-t border-white/10 text-center text-sm text-slate-600">
-            &copy; {new Date().getFullYear()} 9jaKonet. All rights reserved.
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

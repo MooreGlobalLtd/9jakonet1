@@ -8,14 +8,44 @@ import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { formatDateTime } from '../lib/utils';
-import { Clock } from 'lucide-react';
+import { Clock, Bell, Smartphone, CheckCircle2 } from 'lucide-react';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
+import { requestBrowserNotificationPermission, sendTestPushNotification } from '../lib/notifications';
+import { toast } from 'sonner';
 
 export default function Dashboard() {
   const { user, artisanProfile } = useAuthStore();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [showJobForm, setShowJobForm] = useState(false);
+  const [pushStatus, setPushStatus] = useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      setPushStatus(Notification.permission);
+    }
+  }, []);
+
+  const handleTogglePush = async () => {
+    const res = await requestBrowserNotificationPermission();
+    if (res) {
+      setPushStatus(res);
+      if (res === 'granted') {
+        toast.success('Push notifications active! Sending test popup...');
+        sendTestPushNotification();
+      } else {
+        toast.error('Notification permission was denied.');
+      }
+    }
+  };
+
+  const handleTestAlert = async () => {
+    toast.info('Sending test push notification...');
+    const ok = await sendTestPushNotification();
+    if (!ok) {
+      toast.error('Could not show notification. Please check browser permissions.');
+    }
+  };
 
   // New Job Form State
   const [jobTitle, setJobTitle] = useState('');
@@ -216,6 +246,56 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Mobile Push Notifications Card */}
+          <Card className="mt-6 border-slate-200 shadow-sm">
+            <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2 text-slate-800">
+                  <Smartphone className="h-4 w-4 text-emerald-600" />
+                  Phone Push Alerts
+                </CardTitle>
+                {pushStatus === 'granted' ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <CheckCircle2 className="h-3 w-3" /> Active
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                    Inactive
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Receive pop-up notifications directly on your phone lock screen for new chat messages, job requests, and profile visits even when the app is closed.
+              </p>
+              <div className="flex flex-col gap-2 pt-1">
+                {pushStatus === 'granted' ? (
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestAlert}
+                    className="w-full text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    Send Test Alert to Phone
+                  </Button>
+                ) : (
+                  <Button 
+                    type="button" 
+                    size="sm"
+                    onClick={handleTogglePush}
+                    className="w-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    Enable Phone Notifications
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
           {user.role === 'artisan' && (

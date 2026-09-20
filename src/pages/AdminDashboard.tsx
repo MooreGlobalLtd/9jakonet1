@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, updateDoc, doc, where, getDoc, addDoc, increment, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2 } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
@@ -57,6 +57,48 @@ export default function AdminDashboard() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => void } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string; defaultText: string; action: (value: string) => void } | null>(null);
+
+  // App Update Push Broadcast state
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastBody, setBroadcastBody] = useState('');
+  const [broadcastLink, setBroadcastLink] = useState('/dashboard');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) {
+      toast.error('Please enter a title and message for the app update broadcast.');
+      return;
+    }
+    setIsBroadcasting(true);
+    try {
+      // Send notification document to all users so their device service workers trigger
+      const targetUsers = users.length > 0 ? users : [{ id: user?.id || 'admin' }];
+      let count = 0;
+      for (const u of targetUsers) {
+        if (u.id) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: u.id,
+            title: `📢 ${broadcastTitle.trim()}`,
+            body: broadcastBody.trim(),
+            link: broadcastLink.trim() || '/dashboard',
+            type: 'general',
+            read: false,
+            createdAt: Date.now()
+          });
+          count++;
+        }
+      }
+      toast.success(`App update pushed to ${count} users successfully!`);
+      setBroadcastTitle('');
+      setBroadcastBody('');
+    } catch (err: any) {
+      console.error('Error broadcasting update:', err);
+      toast.error('Failed to send broadcast update.');
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
 
   const handleUpdateUserKycStatus = async (userId: string, newStatus: 'verified' | 'rejected') => {
     if (newStatus === 'rejected') {
@@ -1943,6 +1985,84 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
         )}
+
+        {/* Broadcast App Updates & Phone Push Notifications */}
+        <Card className="md:col-span-2 border-slate-200 shadow-sm">
+          <CardHeader className="bg-slate-900 text-white rounded-t-xl pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-white">
+                <Smartphone className="h-5 w-5 text-emerald-400" />
+                Broadcast App Updates &amp; Phone Notifications
+              </CardTitle>
+              <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full font-medium">
+                Pushes to {users.length} registered user devices
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1">
+              Whenever you release an update or have an announcement, send a notification that pops up directly on users&apos; phones even when they aren&apos;t on the app.
+            </p>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={handleSendBroadcast} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Notification Title
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 📢 9jaKonet System Update Available!"
+                    value={broadcastTitle}
+                    onChange={(e) => setBroadcastTitle(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Destination Link (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="/dashboard or /explore or /jobs"
+                    value={broadcastLink}
+                    onChange={(e) => setBroadcastLink(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Message Content (Pops on Phone Lockscreen &amp; Status Bar)
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  placeholder="e.g. We have upgraded the escrow release system with instant bank settlements. Open the app to view what is new!"
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-slate-900 resize-none"
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <Bell className="h-4 w-4 text-emerald-600" />
+                  <span>Delivered through native Service Worker background sync to Android &amp; iOS PWA devices.</span>
+                </div>
+                <Button 
+                  type="submit" 
+                  disabled={isBroadcasting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 h-10 w-full sm:w-auto font-semibold flex items-center justify-center gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  {isBroadcasting ? 'Broadcasting Alert...' : 'Send Phone Push Broadcast'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
 
       {/* KYC Document & Selfie Inspection Modal */}

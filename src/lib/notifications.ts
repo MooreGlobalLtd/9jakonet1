@@ -1,6 +1,5 @@
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { toast } from 'sonner';
 
 export interface NotificationPayload {
   userId: string;
@@ -11,6 +10,22 @@ export interface NotificationPayload {
 }
 
 /**
+ * Register background service worker for mobile PWA push notifications
+ */
+export async function registerNotificationServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    return reg;
+  } catch (err) {
+    console.warn('Service worker registration failed:', err);
+    return null;
+  }
+}
+
+/**
  * Request system / browser push notification permission
  */
 export async function requestBrowserNotificationPermission(): Promise<NotificationPermission | null> {
@@ -18,6 +33,9 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
     return null;
   }
   try {
+    // Ensure service worker is registered
+    await registerNotificationServiceWorker();
+    
     if (Notification.permission === 'default') {
       const permission = await Notification.requestPermission();
       return permission;
@@ -30,8 +48,63 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
 }
 
 /**
+ * Displays a native device push notification via Service Worker or Desktop Notification API
+ */
+export async function showDevicePushNotification(title: string, options: {
+  body: string;
+  icon?: string;
+  badge?: string;
+  link?: string;
+  tag?: string;
+}): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return false;
+  }
+
+  const notificationOptions = {
+    body: options.body,
+    icon: options.icon || '/pwa-192x192.png',
+    badge: options.badge || '/pwa-192x192.png',
+    tag: options.tag || '9jakonet-alert',
+    vibrate: [200, 100, 200],
+    data: {
+      url: options.link || '/'
+    }
+  };
+
+  // 1. Try Service Worker showNotification first (standard for mobile devices & PWAs)
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && 'showNotification' in reg) {
+        await reg.showNotification(title, notificationOptions);
+        return true;
+      }
+    } catch (e) {
+      console.warn('SW showNotification fallback:', e);
+    }
+  }
+
+  // 2. Fallback to standard window Notification
+  try {
+    const notif = new Notification(title, notificationOptions);
+    notif.onclick = () => {
+      window.focus();
+      if (options.link) {
+        window.location.href = options.link;
+      }
+      notif.close();
+    };
+    return true;
+  } catch (err) {
+    console.warn('Failed to fire native notification:', err);
+    return false;
+  }
+}
+
+/**
  * Dispatch an in-app & Firestore notification to a user,
- * plus fire a native browser push notification if permitted.
+ * plus fire a native mobile/browser push notification if permitted.
  */
 export async function sendInAppNotification(payload: NotificationPayload): Promise<void> {
   try {
@@ -42,29 +115,31 @@ export async function sendInAppNotification(payload: NotificationPayload): Promi
       createdAt: Date.now()
     });
 
-    // 2. Fire native browser notification if granted
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        const notif = new Notification(payload.title, {
-          body: payload.body,
-          icon: '/pwa-192x192.png',
-          badge: '/pwa-192x192.png',
-          tag: payload.type || 'marketplace'
-        });
-        notif.onclick = () => {
-          window.focus();
-          if (payload.link) {
-            window.location.href = payload.link;
-          }
-          notif.close();
-        };
-      } catch (pushErr) {
-        console.warn('Native notification trigger failed:', pushErr);
-      }
-    }
+    // 2. Trigger native device push notification if permission is granted
+    await showDevicePushNotification(payload.title, {
+      body: payload.body,
+      link: payload.link,
+      tag: payload.type || '9jakonet'
+    });
   } catch (err) {
     console.warn('Failed to send in-app notification:', err);
   }
+}
+
+/**
+ * Triggers a test push notification to verify phone alerts work
+ */
+export async function sendTestPushNotification(): Promise<boolean> {
+  const perm = await requestBrowserNotificationPermission();
+  if (perm !== 'granted') {
+    return false;
+  }
+
+  return showDevicePushNotification('9jaKonet Alert Active! 🔔', {
+    body: 'Your phone will now receive real-time updates for messages, escrow, and new inquiries even when away from the app.',
+    link: '/dashboard',
+    tag: 'test-alert'
+  });
 }
 
 /**

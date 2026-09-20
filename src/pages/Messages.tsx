@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button';
 import { Send, UserCircle } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { sendEmail } from '../lib/email';
+import { sendInAppNotification } from '../lib/notifications';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 
 export default function Messages() {
@@ -138,8 +139,19 @@ export default function Messages() {
         isRead: false
       });
       
-      // Send Email Notification
+      // Send Push and In-App Notification
       const activeChatDetails = chats.find(c => c.id === activeChat);
+      if (activeChatDetails && activeChatDetails.otherUser) {
+        sendInAppNotification({
+          userId: activeChatDetails.otherUser.id,
+          title: `💬 New Message from ${user.displayName || 'a user'}`,
+          body: msgText.length > 80 ? `${msgText.substring(0, 80)}...` : msgText,
+          link: `/messages?chat=${activeChat}`,
+          type: 'message'
+        });
+      }
+
+      // Send Email Notification
       if (activeChatDetails && activeChatDetails.otherUser && activeChatDetails.otherUser.email) {
         sendEmail({
           to: activeChatDetails.otherUser.email,
