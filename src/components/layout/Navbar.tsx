@@ -129,7 +129,7 @@ export default function Navbar() {
       unsubscribeEscrows();
       unsubscribeDirectNotifs();
     };
-  }, [user]);
+  }, [user?.id, user?.role]);
 
   const markNotifsAsRead = () => {
      setUnreadNotifCount(0);

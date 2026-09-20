@@ -119,7 +119,7 @@ export default function JobsAndEscrow() {
       unsubscribeCustomer();
       unsubscribeArtisan();
     };
-  }, [user]);
+  }, [user?.id]);
 
   const handleFundEscrow = async (job: EscrowContract, paymentReference?: any) => {
     try {

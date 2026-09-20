@@ -126,7 +126,7 @@ export default function Wallet() {
         setAccountVerified(true);
       }
     }
-  }, [user]);
+  }, [user?.accountNumber, user?.bankName, user?.bankCode, user?.accountName]);
 
   const handleSaveBankDetails = async () => {
     if (!user || !bankName || !accountNumber || !accountVerified) {
@@ -207,7 +207,7 @@ export default function Wallet() {
     };
     
     fetchWithdrawals();
-  }, [user]);
+  }, [user?.id]);
 
   // Handle automatic real bank account verification when 10 digits are entered
   useEffect(() => {

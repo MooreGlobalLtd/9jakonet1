@@ -61,7 +61,7 @@ export default function Dashboard() {
       }
     };
     fetchJobs();
-  }, [user]);
+  }, [user?.id, user?.role]);
 
   const handlePostJob = async (e: React.FormEvent) => {
     e.preventDefault();

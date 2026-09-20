@@ -9,14 +9,33 @@ import { isQuotaExhausted, markQuotaExhausted } from '../../lib/quotaManager';
 
 export default function LiveLocationWatcher() {
   const { user, setUser } = useAuthStore();
-  const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
-  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>(() => {
+    if (typeof window !== 'undefined' && user?.liveLocation?.latitude && user?.liveLocation?.longitude) {
+      return 'granted';
+    }
+    return 'prompt';
+  });
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(() => {
+    if (user?.liveLocation?.latitude && user?.liveLocation?.longitude) {
+      return {
+        lat: user.liveLocation.latitude,
+        lng: user.liveLocation.longitude,
+        accuracy: user.liveLocation.accuracy || 250
+      };
+    }
+    return null;
+  });
   const [isUpdating, setIsUpdating] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [phoneOsTab, setPhoneOsTab] = useState<'android' | 'ios'>('android');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [denialReason, setDenialReason] = useState<string | null>(null);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('loc_banner_dismissed') === 'true';
+    }
+    return false;
+  });
   const lastSyncTimestampRef = useRef<number>(0);
 
   // Check if user already has verified/saved location on profile
@@ -230,7 +249,12 @@ export default function LiveLocationWatcher() {
             </button>
 
             <button
-              onClick={() => setIsDismissed(true)}
+              onClick={() => {
+                setIsDismissed(true);
+                try {
+                  sessionStorage.setItem('loc_banner_dismissed', 'true');
+                } catch (e) {}
+              }}
               className="text-amber-200 hover:text-white p-1 rounded-md"
               title="Dismiss banner"
             >

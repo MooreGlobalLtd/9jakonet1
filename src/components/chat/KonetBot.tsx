@@ -232,10 +232,10 @@ export default function KonetBot() {
   };
 
   return (
-    <motion.div drag dragMomentum={false} id="konetbot-container" className="fixed bottom-5 right-5 z-50 flex flex-col items-end" style={{ touchAction: "none" }}>
+    <div id="konetbot-container" className="fixed bottom-5 right-5 z-50 flex flex-col items-end pointer-events-none">
       {/* Floating Launcher Button */}
       {!isOpen && (
-        <div className="relative group">
+        <div className="relative group pointer-events-auto">
           {/* Active online pulse ring */}
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -246,7 +246,7 @@ export default function KonetBot() {
           {showNotificationBadge && (
             <div 
               onClick={() => setIsOpen(true)}
-              className="hidden sm:flex absolute right-16 bottom-1 bg-white border border-emerald-200 shadow-xl rounded-2xl px-3.5 py-2 items-center gap-2 cursor-pointer hover:border-emerald-400 transition-all w-60 animate-bounce"
+              className="hidden sm:flex absolute right-16 bottom-1 bg-white border border-emerald-200 shadow-xl rounded-2xl px-3.5 py-2 items-center gap-2 cursor-pointer hover:border-emerald-400 transition-all w-60 animate-in fade-in slide-in-from-right-2 duration-300"
             >
               <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></div>
               <p className="text-xs font-medium text-slate-700 leading-snug">
@@ -287,7 +287,7 @@ export default function KonetBot() {
       {isOpen && (
         <div 
           id="konetbot-chat-window"
-          className="w-[92vw] sm:w-[410px] h-[550px] max-h-[82vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
+          className="w-[92vw] sm:w-[410px] h-[550px] max-h-[82vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200 pointer-events-auto"
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-emerald-800 to-slate-900 text-white p-3.5 flex items-center justify-between shadow-md">
@@ -445,6 +445,6 @@ export default function KonetBot() {
           </div>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

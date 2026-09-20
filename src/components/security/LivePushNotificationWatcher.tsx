@@ -18,8 +18,9 @@ export default function LivePushNotificationWatcher() {
   const initialLoadRef = useRef(true);
   const broadcastInitialLoadRef = useRef(true);
   const lastProcessedTimeRef = useRef(Date.now());
+  const syncedUserIdRef = useRef<string | null>(null);
 
-  // 1. Check support and current permission
+  // 1. Check support, register worker, and check prompt banner (runs once on mount)
   useEffect(() => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setPermission('unsupported');
@@ -28,14 +29,6 @@ export default function LivePushNotificationWatcher() {
 
     setPermission(Notification.permission);
     registerNotificationServiceWorker();
-
-    // If permission is already granted and we have a logged-in user, save push status to Firestore
-    if (Notification.permission === 'granted' && user?.id) {
-      updateDoc(doc(db, 'users', user.id), {
-        pushNotificationsActive: true,
-        lastActiveDeviceSync: Date.now()
-      }).catch(() => {});
-    }
 
     // If permission is default, display the polite one-tap activation prompt after a short delay
     if (Notification.permission === 'default') {
@@ -47,11 +40,28 @@ export default function LivePushNotificationWatcher() {
       }, 2500);
       return () => clearTimeout(timer);
     }
-  }, [user]);
+  }, []);
 
-  // 2. Listen to real-time personal notifications for the logged in user
+  // 2. Safely sync push active status to user document once without triggering infinite re-render loops
   useEffect(() => {
-    if (!user || !user.id) return;
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    if (!user?.id) return;
+    if (syncedUserIdRef.current === user.id) return;
+
+    syncedUserIdRef.current = user.id;
+
+    // Only update if not already marked active in the database
+    if (!user.pushNotificationsActive) {
+      updateDoc(doc(db, 'users', user.id), {
+        pushNotificationsActive: true
+      }).catch(() => {});
+    }
+  }, [user?.id, user?.pushNotificationsActive]);
+
+  // 3. Listen to real-time personal notifications for the logged in user
+  useEffect(() => {
+    if (!user?.id) return;
 
     try {
       const notifQuery = query(
@@ -103,7 +113,7 @@ export default function LivePushNotificationWatcher() {
     } catch (e) {
       console.warn('Failed to attach live notification listener:', e);
     }
-  }, [user]);
+  }, [user?.id]);
 
   // 3. Listen to system-wide broadcasts & Admin test alerts sent to ALL_USERS
   useEffect(() => {

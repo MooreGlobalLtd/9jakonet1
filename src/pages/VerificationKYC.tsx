@@ -100,7 +100,7 @@ export default function VerificationKYC() {
       if (user.kyc.documentPhotoUrl) setDocPhotoUrl(user.kyc.documentPhotoUrl);
       if (user.kyc.selfiePhotoUrl) setSelfiePhotoUrl(user.kyc.selfiePhotoUrl);
     }
-  }, [user]);
+  }, [user?.id, user?.kyc]);
 
   // Handle GPS location acquisition
   const acquireLocation = () => {
@@ -865,7 +865,7 @@ export default function VerificationKYC() {
                   {/* Face outline oval guide */}
                   <div className="absolute inset-0 border-2 border-dashed border-emerald-400/70 rounded-[100px] mx-12 my-6 pointer-events-none flex flex-col items-center justify-center overflow-hidden">
                     {isScanning && (
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_10px_2px_#34d399] animate-[pulse_1s_infinite]" style={{ animation: 'bounce 2s infinite' }} />
+                      <div className="absolute top-1/2 left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_10px_2px_#34d399] animate-pulse" />
                     )}
                     <span className="text-[10px] text-emerald-300 font-semibold bg-black/60 px-2 py-0.5 rounded-full z-10">
                       Align your face here

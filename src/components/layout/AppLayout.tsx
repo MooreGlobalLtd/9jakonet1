@@ -16,15 +16,11 @@ export default function AppLayout() {
 
   useEffect(() => {
     // Quick-fix: Automatically correct any corrupted negative wallet balances.
-    // If the system previously double-deducted, reset the local and remote state to 0 so the artisan isn't "in debt".
-    if (user && (user.walletBalance || 0) < 0) {
+    if (user?.id && (user.walletBalance || 0) < 0) {
       updateDoc(doc(db, 'users', user.id), { walletBalance: 0 })
-        .then(() => {
-          useAuthStore.setState({ user: { ...user, walletBalance: 0 } });
-        })
         .catch(err => console.error("Could not correct negative balance", err));
     }
-  }, [user]);
+  }, [user?.id, user?.walletBalance]);
 
   const showKycPrompt = user && !user.isKycVerified && user?.kyc?.status !== 'verified' && user?.kyc?.status !== 'pending' && location.pathname !== '/verify-kyc';
 
@@ -58,10 +54,10 @@ export default function AppLayout() {
       )}
 
       <Navbar />
-      <main className="flex-1">
+      <main className="flex-1 overflow-x-hidden">
         <Outlet />
       </main>
-      <Footer />
+      {location.pathname === '/' && <Footer />}
       {/* Active AI Support Assistant */}
       <KonetBot />
     </div>

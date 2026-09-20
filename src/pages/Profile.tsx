@@ -68,7 +68,7 @@ export default function Profile() {
       if (user.state) setState(user.state);
       if (user.avatar) setAvatarUrl(user.avatar);
     }
-  }, [user]);
+  }, [user?.id, user?.displayName, user?.phone, user?.phoneNumber, user?.address, user?.state, user?.avatar]);
 
   useEffect(() => {
     if (artisanProfile?.portfolioImages) {

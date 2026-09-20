@@ -65,7 +65,7 @@ export default function Messages() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch messages for active chat
   useEffect(() => {

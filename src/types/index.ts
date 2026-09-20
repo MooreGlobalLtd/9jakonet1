@@ -52,6 +52,8 @@ export interface User {
   kyc?: UserKyc;
   isKycVerified?: boolean;
   liveLocation?: LiveLocation;
+  pushNotificationsActive?: boolean;
+  lastActiveDeviceSync?: number;
 }
 
 export interface ArtisanProfile {
