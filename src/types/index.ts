@@ -153,6 +153,7 @@ export interface MarketplaceItem {
   state: string;
   city: string;
   status: 'active' | 'sold';
+  soldAt?: number;
   createdAt: number;
   isDistressSale?: boolean;
   distressReason?: string;

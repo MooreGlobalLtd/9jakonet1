@@ -32,7 +32,7 @@ export default function Marketplace() {
   const [search, setSearch] = useState('');
   const [selectedState, setSelectedState] = useState<string>('All Nigeria');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [activeTab, setActiveTab] = useState<'all' | 'distress' | 'my_ads'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'available' | 'sold' | 'distress' | 'my_ads'>('all');
 
   // Modals & Detailed Views
   const [selectedDetailItem, setSelectedDetailItem] = useState<MarketplaceItem | null>(null);
@@ -255,15 +255,33 @@ export default function Marketplace() {
   // Toggle Sold Status
   const handleToggleSoldStatus = async (item: MarketplaceItem) => {
     if (!canManageItem(item.sellerId)) return;
-    const newStatus = item.status === 'sold' ? 'active' : 'sold';
+    const newStatus: 'active' | 'sold' = item.status === 'sold' ? 'active' : 'sold';
+    const now = Date.now();
+
+    // Optimistic UI update so the change is instantly reflected
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: newStatus, soldAt: newStatus === 'sold' ? now : undefined } : i));
+    if (selectedDetailItem?.id === item.id) {
+      setSelectedDetailItem({ ...selectedDetailItem, status: newStatus, soldAt: newStatus === 'sold' ? now : undefined });
+    }
+
     try {
-      await updateDoc(doc(db, 'marketplace_items', item.id), { status: newStatus });
-      if (selectedDetailItem?.id === item.id) {
-        setSelectedDetailItem({ ...selectedDetailItem, status: newStatus });
+      await updateDoc(doc(db, 'marketplace_items', item.id), { 
+        status: newStatus,
+        soldAt: newStatus === 'sold' ? now : null
+      });
+      if (newStatus === 'sold') {
+        toast.success(`"${item.title.substring(0, 26)}..." marked as SOLD! It stays visible on the feed with a prominent SOLD badge.`);
+      } else {
+        toast.success(`"${item.title.substring(0, 26)}..." reactivated as Active!`);
       }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to update status.');
+    } catch (err: any) {
+      console.error('Failed to update status:', err);
+      // Revert optimistic update on failure
+      setItems(prev => prev.map(i => i.id === item.id ? item : i));
+      if (selectedDetailItem?.id === item.id) {
+        setSelectedDetailItem(item);
+      }
+      toast.error('Failed to update status: ' + (err?.message || 'Error occurred'));
     }
   };
 
@@ -482,18 +500,27 @@ export default function Marketplace() {
   };
 
   // Filtering Logic
+  const totalCount = items.length;
+  const activeCount = items.filter(i => i.status === 'active').length;
+  const soldCount = items.filter(i => i.status === 'sold').length;
+  const distressCount = items.filter(i => i.isDistressSale).length;
   const myItemsCount = user ? items.filter(i => i.sellerId === user.id).length : 0;
-  const distressCount = items.filter(i => i.status === 'active' && i.isDistressSale).length;
 
   const filteredItems = items.filter(item => {
     // Tab filter
     if (activeTab === 'my_ads') {
       if (!user || item.sellerId !== user.id) return false;
-    } else if (activeTab === 'distress') {
-      if (item.status !== 'active' || !item.isDistressSale) return false;
-    } else {
-      // In 'all' tab, only show active items
+    } else if (activeTab === 'available') {
+      // Only show unsold active listings
       if (item.status !== 'active') return false;
+    } else if (activeTab === 'sold') {
+      // Specifically show sold items archive
+      if (item.status !== 'sold') return false;
+    } else if (activeTab === 'distress') {
+      if (!item.isDistressSale) return false;
+    } else {
+      // In 'all' tab: keep ALL items (both active and sold) visible!
+      // Sold items stay on the marketplace with clear SOLD badges for buyers to see sales history.
     }
 
     // State filter (Jiji-style integrated dropdown)
@@ -720,9 +747,9 @@ export default function Marketplace() {
           </div>
         )}
 
-        {/* Feed Tabs: All Listings vs Distress Sales vs My Adverts */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-6">
-          <div className="flex items-center gap-3 sm:gap-4">
+        {/* Feed Tabs: All Listings vs Available vs Sold Archive vs Distress Sales vs My Adverts */}
+        <div className="flex flex-wrap items-center justify-between border-b border-slate-200 pb-2 mb-6 gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <button
               onClick={() => setActiveTab('all')}
               className={`text-sm sm:text-base font-bold pb-2 relative transition-colors ${
@@ -731,9 +758,40 @@ export default function Marketplace() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              All Items ({items.filter(i => i.status === 'active').length})
+              All Items ({totalCount})
               {activeTab === 'all' && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600 rounded-full" />
+              )}
+            </button>
+
+            {/* Available Only Tab */}
+            <button
+              onClick={() => setActiveTab('available')}
+              className={`text-sm sm:text-base font-bold pb-2 relative transition-colors ${
+                activeTab === 'available' 
+                  ? 'text-emerald-700' 
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Available ({activeCount})
+              {activeTab === 'available' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600 rounded-full" />
+              )}
+            </button>
+
+            {/* Sold Archive Tab */}
+            <button
+              onClick={() => setActiveTab('sold')}
+              className={`text-sm sm:text-base font-bold pb-2 relative transition-colors flex items-center gap-1.5 ${
+                activeTab === 'sold' 
+                  ? 'text-red-700' 
+                  : 'text-slate-500 hover:text-red-600'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-red-500" />
+              <span>Sold ({soldCount})</span>
+              {activeTab === 'sold' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded-full" />
               )}
             </button>
 
@@ -864,9 +922,17 @@ export default function Marketplace() {
                   
                   {/* Status: Sold vs Distress vs Just Listed */}
                   {item.status === 'sold' ? (
-                    <div className="absolute top-2 left-2 bg-red-600/95 backdrop-blur-xs px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-bold text-white tracking-wide shadow-sm">
-                      SOLD
-                    </div>
+                    <>
+                      <div className="absolute top-2 left-2 bg-red-600/95 backdrop-blur-xs px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-black text-white tracking-wide shadow-md flex items-center gap-1 z-10">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>SOLD</span>
+                      </div>
+                      <div className="absolute inset-0 bg-slate-950/25 pointer-events-none flex items-center justify-center z-10">
+                        <span className="bg-red-600/95 text-white font-black text-xs sm:text-sm px-3 py-1 rounded-lg shadow-xl tracking-wider uppercase -rotate-6 border border-white/50">
+                          SOLD OUT
+                        </span>
+                      </div>
+                    </>
                   ) : item.isDistressSale ? (
                     <div className="absolute top-2 left-2 bg-gradient-to-r from-red-600 to-amber-600 px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-black text-white tracking-wide shadow-md flex items-center gap-1">
                       <Flame className="w-3 h-3 text-yellow-200" />
@@ -901,14 +967,18 @@ export default function Marketplace() {
 
                     {/* Price & Negotiable Badge (Jiji Style) */}
                     <div className="flex flex-wrap items-baseline gap-1.5 mb-2">
-                      <p className="text-base sm:text-lg font-extrabold text-emerald-700">
+                      <p className={`text-base sm:text-lg font-extrabold ${item.status === 'sold' ? 'text-slate-500 line-through' : 'text-emerald-700'}`}>
                         ₦{item.price.toLocaleString()}
                       </p>
-                      {item.isNegotiable !== false && (
+                      {item.status === 'sold' ? (
+                        <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
+                          Sold
+                        </span>
+                      ) : item.isNegotiable !== false ? (
                         <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">
                           Negotiable
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     
                     {/* Location & Category */}
@@ -932,9 +1002,13 @@ export default function Marketplace() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleToggleSoldStatus(item)}
-                          className={`flex-1 text-[11px] h-8 font-bold border ${item.status === 'sold' ? 'text-emerald-700 bg-emerald-50 border-emerald-300' : 'text-amber-800 bg-amber-50 border-amber-300'}`}
+                          className={`flex-1 text-[11px] h-8 font-bold border transition-colors ${
+                            item.status === 'sold' 
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100' 
+                              : 'text-amber-800 bg-amber-50 border-amber-300 hover:bg-amber-100'
+                          }`}
                         >
-                          {item.status === 'sold' ? '✓ Mark Active' : 'Mark Sold'}
+                          {item.status === 'sold' ? '✓ Reactivate Ad' : 'Mark Sold'}
                         </Button>
                         <Button 
                           size="sm"
@@ -951,7 +1025,7 @@ export default function Marketplace() {
                         <span className="text-[11px] text-slate-500 truncate mr-1">
                           {item.sellerName?.split(' ')[0] || 'Seller'}
                         </span>
-                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                        <span className="text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200 uppercase">
                           SOLD OUT
                         </span>
                       </div>
@@ -1319,9 +1393,14 @@ export default function Marketplace() {
 
                 {/* Buyer Actions or Sold Banner */}
                 {selectedDetailItem.status === 'sold' ? (
-                  <div className="w-full py-3.5 px-4 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold text-center text-sm flex items-center justify-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
-                    This item has been marked as SOLD
+                  <div className="w-full py-3.5 px-4 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold text-center text-xs sm:text-sm flex flex-col items-center justify-center gap-1 shadow-xs">
+                    <div className="flex items-center gap-1.5 text-red-800 font-extrabold text-sm">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                      This item has been marked as SOLD
+                    </div>
+                    <p className="text-xs text-red-600 font-normal">
+                      This listing has already been sold and is displayed on 9jaKonet for price transparency and reference.
+                    </p>
                   </div>
                 ) : (
                   <div className="flex flex-col sm:flex-row gap-2.5 w-full">
