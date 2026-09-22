@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { User, ArtisanProfile } from '../types';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { generateReferralCode } from '../lib/referralService';
 
 interface AuthState {
   user: User | null;
@@ -41,6 +42,14 @@ export const useAuthStore = create<AuthState>((set) => ({
         userUnsubscribe = onSnapshot(doc(db, 'users', firebaseUser.uid), async (userDoc) => {
           if (userDoc.exists()) {
             const userData = { id: userDoc.id, ...userDoc.data() } as User;
+
+            // Auto-generate referral code for existing user if missing
+            if (!userData.referralCode) {
+              const code = generateReferralCode(userData.displayName, userData.id);
+              userData.referralCode = code;
+              updateDoc(doc(db, 'users', firebaseUser.uid), { referralCode: code }).catch(() => {});
+            }
+
             set({ user: userData, loading: false, initialized: true });
             
             // Listen to artisan profile if they are an artisan
@@ -59,6 +68,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             if (isNewUser) {
               const pendingRole = (sessionStorage.getItem('pendingRegistrationRole') as any) || 'customer';
               sessionStorage.removeItem('pendingRegistrationRole');
+              const code = generateReferralCode(firebaseUser.displayName || 'User', firebaseUser.uid);
               const newUser: User = {
                 id: firebaseUser.uid,
                 email: firebaseUser.email || '',
@@ -66,7 +76,11 @@ export const useAuthStore = create<AuthState>((set) => ({
                 role: pendingRole,
                 createdAt: Date.now(),
                 walletBalance: 0,
-                isKycVerified: false
+                isKycVerified: false,
+                referralCode: code,
+                referralCount: 0,
+                verifiedReferralCount: 0,
+                referralRewardsEarned: 0
               };
               
               try {

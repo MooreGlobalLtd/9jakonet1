@@ -1,4 +1,4 @@
-export type UserRole = 'customer' | 'artisan' | 'admin';
+export type UserRole = 'customer' | 'artisan' | 'admin' | 'support_agent';
 
 export type VerificationDocType = 'nin' | 'voters_card' | 'drivers_license' | 'international_passport';
 
@@ -54,6 +54,30 @@ export interface User {
   liveLocation?: LiveLocation;
   pushNotificationsActive?: boolean;
   lastActiveDeviceSync?: number;
+  isSupportAgent?: boolean;
+  supportAgentApprovedAt?: number;
+  supportAgentApprovedBy?: string;
+  referralCode?: string;
+  referredBy?: string; // referrer's user ID
+  referralCount?: number; // total signups referred
+  verifiedReferralCount?: number; // total referred friends that completed KYC
+  referralRewardsEarned?: number; // total ₦ paid out (e.g. 3000, 6000)
+}
+
+export interface ReferralRecord {
+  id: string;
+  referrerId: string;
+  referrerName: string;
+  referrerEmail: string;
+  referredUserId: string;
+  referredUserName: string;
+  referredUserEmail: string;
+  referralCode: string;
+  status: 'signed_up' | 'kyc_verified' | 'rewarded';
+  createdAt: number;
+  kycVerifiedAt?: number;
+  rewardedAt?: number;
+  rewardAmount?: number;
 }
 
 export interface ArtisanProfile {
@@ -169,7 +193,36 @@ export interface AppNotification {
   title: string;
   body: string;
   link?: string;
-  type?: 'offer' | 'message' | 'inspection_request' | 'escrow' | 'general';
+  type?: 'offer' | 'message' | 'inspection_request' | 'escrow' | 'general' | 'support_request';
   read: boolean;
   createdAt: number;
+}
+
+export interface SupportMessage {
+  id: string;
+  ticketId: string;
+  senderRole: 'user' | 'agent' | 'bot' | 'system';
+  senderId?: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface SupportTicket {
+  id: string;
+  userId?: string;
+  userName: string;
+  userEmail?: string;
+  userPhone?: string;
+  userRole?: string;
+  status: 'waiting' | 'agent_active' | 'resolved';
+  subject?: string;
+  assignedAgentId?: string;
+  assignedAgentName?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastMessage?: string;
+  lastSenderRole?: 'user' | 'agent' | 'bot' | 'system';
+  unreadByAdmin?: boolean;
+  unreadByUser?: boolean;
 }

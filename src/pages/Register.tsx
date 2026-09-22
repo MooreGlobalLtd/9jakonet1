@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   createUserWithEmailAndPassword, 
   signInWithPopup,
@@ -15,11 +15,13 @@ import { Input } from '../components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/card';
 import { UserRole, User } from '../types';
 import { useAuthStore } from '../store/authStore';
-import { ShieldCheck, Mail, Lock, User as UserIcon, Phone, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, User as UserIcon, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, Gift } from 'lucide-react';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
+import { generateReferralCode, getReferrerByCode, recordNewReferral } from '../lib/referralService';
 
 export default function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user: currentUser, signOut, setUser } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [role, setRole] = useState<UserRole>('customer');
@@ -32,6 +34,16 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [verificationEmailSent, setVerificationEmailSent] = useState<string | null>(null);
+  
+  // Referral Code state
+  const [referralCodeInput, setReferralCodeInput] = useState('');
+
+  useEffect(() => {
+    const refFromUrl = searchParams.get('ref') || searchParams.get('referral') || searchParams.get('r');
+    if (refFromUrl) {
+      setReferralCodeInput(refFromUrl.toUpperCase());
+    }
+  }, [searchParams]);
 
   // Status & Error Messages
   const [errorMessage, setErrorMessage] = useState('');
@@ -127,18 +139,47 @@ export default function Register() {
       // 1. Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       
+      const ownReferralCode = generateReferralCode(fullName.trim(), userCredential.user.uid);
+
+      // Check if valid referrer provided
+      let referrerUser: User | null = null;
+      if (referralCodeInput.trim()) {
+        try {
+          referrerUser = await getReferrerByCode(referralCodeInput.trim());
+        } catch (e) {
+          console.warn("Could not verify referral code:", e);
+        }
+      }
+
       // 1.5 Create the user in Firestore database so they have a profile
       const newUser: User = {
         id: userCredential.user.uid,
         email: email.trim(),
         displayName: fullName.trim(),
+        phoneNumber: phone.trim(),
         role: role,
         createdAt: Date.now(),
         walletBalance: 0,
-        isKycVerified: false
+        isKycVerified: false,
+        referralCode: ownReferralCode,
+        referredBy: referrerUser ? referrerUser.id : undefined,
+        referralCount: 0,
+        verifiedReferralCount: 0,
+        referralRewardsEarned: 0
       };
       
       await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
+
+      // Record referral link if valid referrer found
+      if (referrerUser && referrerUser.id !== userCredential.user.uid) {
+        await recordNewReferral({
+          referrer: referrerUser,
+          newUserId: userCredential.user.uid,
+          newUserName: fullName.trim(),
+          newUserEmail: email.trim(),
+          referralCode: referralCodeInput.trim().toUpperCase()
+        });
+      }
       
       // Send Custom Welcome Email based on role
       try {
@@ -239,6 +280,9 @@ export default function Register() {
 
     try {
       sessionStorage.setItem('pendingRegistrationRole', role);
+      if (referralCodeInput.trim()) {
+        sessionStorage.setItem('pendingReferralCode', referralCodeInput.trim().toUpperCase());
+      }
       await signInWithPopup(auth, googleProvider);
       // For now: Authenticate users only, Do NOT save user profile data
       navigate('/dashboard');
@@ -424,6 +468,34 @@ export default function Register() {
                   required
                 />
               </div>
+            </div>
+
+            {/* Optional Referral Code */}
+            <div className="pt-1">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Referral Code <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                {referralCodeInput && (
+                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                    <Gift className="h-3 w-3 text-emerald-600" />
+                    ₦3,000 Milestone Referral
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <Gift className="absolute left-3 top-3 h-4 w-4 text-emerald-600" />
+                <Input 
+                  type="text"
+                  placeholder="e.g. KONET-SAMUEL-6F3C"
+                  value={referralCodeInput}
+                  onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                  className="pl-9 h-10 text-sm font-mono uppercase bg-slate-50 focus:bg-white"
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Have a friend's referral link or code? Enter it here to help them earn when you verify your ID.
+              </p>
             </div>
 
             <Button 

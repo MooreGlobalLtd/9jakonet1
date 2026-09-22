@@ -5,13 +5,24 @@ import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send, Zap, Radio } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send, Zap, Radio, Headphones, Gift } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 import { withTimeout } from '../lib/timeout';
 import { showDevicePushNotification, triggerGlobalBroadcastPush } from '../lib/notifications';
 import { toast } from 'sonner';
+import LiveSupportDesk from '../components/admin/LiveSupportDesk';
+import { 
+  subscribeToSupportTickets, 
+  appointUserAsSupportAgent, 
+  revokeUserSupportAgent 
+} from '../lib/supportService';
+import { 
+  processKycReferralReward, 
+  subscribeToAllReferrals,
+  ReferralRecord 
+} from '../lib/referralService';
 
 interface Withdrawal {
   id: string;
@@ -48,16 +59,52 @@ export default function AdminDashboard() {
   const [processingWithdrawalId, setProcessingWithdrawalId] = useState<string | null>(null);
 
   // Drilldown states for interactive stat cards
-  const [activeDetailView, setActiveDetailView] = useState<'revenue' | 'users' | 'verified_artisans' | 'customers' | 'pending_verifications' | 'kyc_security' | 'none'>('none');
+  const [activeDetailView, setActiveDetailView] = useState<'revenue' | 'users' | 'verified_artisans' | 'customers' | 'pending_verifications' | 'kyc_security' | 'support_desk' | 'referrals' | 'none'>('none');
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'customer' | 'artisan' | 'admin'>('all');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'customer' | 'artisan' | 'support_agent' | 'admin'>('all');
   const [revenueSearchTerm, setRevenueSearchTerm] = useState('');
+  const [referralSearchTerm, setReferralSearchTerm] = useState('');
+  const [allReferrals, setAllReferrals] = useState<ReferralRecord[]>([]);
   const [resettingBalances, setResettingBalances] = useState(false);
   const [previewModal, setPreviewModal] = useState<{ title: string; image: string; details?: string } | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => void } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string; defaultText: string; action: (value: string) => void } | null>(null);
+
+  // Subscribe to all viral referrals
+  useEffect(() => {
+    const unsubscribeRef = subscribeToAllReferrals((list) => {
+      setAllReferrals(list);
+    });
+    return () => unsubscribeRef();
+  }, []);
+
+  // Guard: If current logged-in user is an appointed Support Agent (and not Super Admin),
+  // they only have access to the Live Support Desk!
+  useEffect(() => {
+    if (user && (user.isSupportAgent || user.role === 'support_agent')) {
+      const isSuperAdminUser = user.role === 'admin' || 
+        user.email === 'ayorindesamuel705@gmail.com' || 
+        user.email === 'support@9jakonet.com' || 
+        user.email === 'info@mooregloballtd.online';
+      if (!isSuperAdminUser) {
+        window.location.href = '/support-desk';
+      }
+    }
+  }, [user]);
+
+  // Live Support Desk Counters
+  const [waitingSupportCount, setWaitingSupportCount] = useState(0);
+  const [activeSupportCount, setActiveSupportCount] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSupportTickets((tickets) => {
+      setWaitingSupportCount(tickets.filter(t => t.status === 'waiting').length);
+      setActiveSupportCount(tickets.filter(t => t.status === 'agent_active').length);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // App Update Push Broadcast state
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -290,6 +337,15 @@ export default function AdminDashboard() {
         }
       }).catch(console.warn);
 
+      // Trigger referral milestone reward check if verified
+      if (newStatus === 'verified') {
+        processKycReferralReward(userId).then((res) => {
+          if (res.rewarded) {
+            toast.success(`🎉 Referral Milestone: ₦3,000 was credited to ${res.referrerName || 'referrer'} for reaching 3 verified friends!`);
+          }
+        }).catch(console.error);
+      }
+
       if (targetUser?.email) {
         sendEmail({
           to: targetUser.email,
@@ -373,6 +429,58 @@ export default function AdminDashboard() {
         } catch (err) {
           console.error("Error promoting user:", err);
           toast.error("Failed to promote user to Admin.");
+        }
+      }
+    });
+  };
+
+  const handleAppointSupportAgent = async (targetUser: User) => {
+    setConfirmDialog({
+      message: `Appoint ${targetUser.displayName || targetUser.email} as an authorized Live Support Agent? They will be granted access ONLY to the Live Support Desk to chat with and assist customers and artisans.`,
+      action: async () => {
+        try {
+          await appointUserAsSupportAgent({
+            userId: targetUser.id,
+            userName: targetUser.displayName || 'Support Agent',
+            userEmail: targetUser.email,
+            appointedByName: user?.displayName || user?.email || 'Super Admin'
+          });
+          setUsers(users.map(u => u.id === targetUser.id ? { 
+            ...u, 
+            isSupportAgent: true, 
+            role: 'support_agent',
+            supportAgentApprovedAt: Date.now(),
+            supportAgentApprovedBy: user?.displayName || user?.email || 'Super Admin'
+          } : u));
+          toast.success(`🎉 ${targetUser.displayName || targetUser.email} is now an approved Live Support Agent!`);
+        } catch (err: any) {
+          console.error("Error appointing support agent:", err);
+          toast.error("Failed to appoint user as support agent.");
+        }
+      }
+    });
+  };
+
+  const handleRevokeSupportAgent = async (targetUser: User) => {
+    setConfirmDialog({
+      message: `Revoke Live Support Agent privileges from ${targetUser.displayName || targetUser.email}? Their access to the Live Support Desk will be removed.`,
+      action: async () => {
+        try {
+          const fallbackRole = artisans.some(a => a.userId === targetUser.id) ? 'artisan' : 'customer';
+          await revokeUserSupportAgent({
+            userId: targetUser.id,
+            fallbackRole,
+            revokedByName: user?.displayName || user?.email || 'Super Admin'
+          });
+          setUsers(users.map(u => u.id === targetUser.id ? { 
+            ...u, 
+            isSupportAgent: false, 
+            role: fallbackRole 
+          } : u));
+          toast.info(`${targetUser.displayName || targetUser.email} is no longer a Support Agent.`);
+        } catch (err: any) {
+          console.error("Error revoking support agent:", err);
+          toast.error("Failed to revoke support agent status.");
         }
       }
     });
@@ -861,8 +969,25 @@ export default function AdminDashboard() {
     );
   });
 
+  const verifiedReferralsCount = allReferrals.filter(r => r.status === 'kyc_verified' || r.status === 'rewarded').length;
+  const totalReferralRewardsDisbursed = users.reduce((acc, u) => acc + (u.referralRewardsEarned || 0), 0);
+
+  const filteredReferrals = allReferrals.filter(r => {
+    if (!referralSearchTerm) return true;
+    const term = referralSearchTerm.toLowerCase();
+    return (
+      (r.referrerName || '').toLowerCase().includes(term) ||
+      (r.referrerEmail || '').toLowerCase().includes(term) ||
+      (r.referredUserName || '').toLowerCase().includes(term) ||
+      (r.referredUserEmail || '').toLowerCase().includes(term) ||
+      (r.referralCode || '').toLowerCase().includes(term)
+    );
+  });
+
   const filteredUsers = users.filter(u => {
-    const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
+    const matchesRole = userRoleFilter === 'all' || 
+      u.role === userRoleFilter || 
+      (userRoleFilter === 'support_agent' && (u.isSupportAgent || u.role === 'support_agent'));
     if (!matchesRole) return false;
     if (!userSearchTerm) return true;
     const term = userSearchTerm.toLowerCase();
@@ -1067,6 +1192,68 @@ export default function AdminDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Live Support Desk Stat Card */}
+        <Card 
+          onClick={() => setActiveDetailView(activeDetailView === 'support_desk' ? 'none' : 'support_desk')}
+          className={`cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border ${
+            activeDetailView === 'support_desk' 
+              ? 'ring-4 ring-emerald-500/40 border-emerald-500 bg-emerald-50/40' 
+              : waitingSupportCount > 0 
+                ? 'border-amber-400 bg-amber-50/40 shadow-sm'
+                : 'hover:border-emerald-300'
+          }`}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`rounded-lg p-2.5 ${waitingSupportCount > 0 ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
+                <Headphones className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Live Support Desk</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                  {waitingSupportCount > 0 ? `${waitingSupportCount} Waiting` : `${activeSupportCount} Active`}
+                </h3>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className={waitingSupportCount > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500'}>
+                {waitingSupportCount > 0 ? 'Incoming visitor chat requests' : 'Chat live with customers & artisans'}
+              </span>
+              <span className={`font-semibold flex items-center gap-0.5 ${activeDetailView === 'support_desk' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                {activeDetailView === 'support_desk' ? 'Active Desk' : 'Open Desk →'}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Viral Referrals & ₦3,000 Milestone Rewards Card */}
+        <Card 
+          onClick={() => setActiveDetailView(activeDetailView === 'referrals' ? 'none' : 'referrals')}
+          className={`cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 border ${
+            activeDetailView === 'referrals' 
+              ? 'ring-4 ring-purple-500/40 border-purple-500 bg-purple-50/40' 
+              : 'hover:border-purple-300'
+          }`}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-lg bg-purple-100 p-2.5 text-purple-700">
+                <Gift className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Referrals &amp; Rewards</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">₦{totalReferralRewardsDisbursed.toLocaleString()}</h3>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-purple-700 font-semibold">{verifiedReferralsCount} Verified / {allReferrals.length} Signups</span>
+              <span className={`font-semibold flex items-center gap-0.5 ${activeDetailView === 'referrals' ? 'text-purple-700' : 'text-slate-400'}`}>
+                {activeDetailView === 'referrals' ? 'Active Ledger' : 'Audit →'}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* EXPANDED DRILL-DOWN DETAILS SECTION */}
@@ -1082,6 +1269,8 @@ export default function AdminDashboard() {
                   {activeDetailView === 'customers' && <Users className="h-5 w-5 text-purple-600" />}
                   {activeDetailView === 'pending_verifications' && <Clock className="h-5 w-5 text-amber-600" />}
                   {activeDetailView === 'kyc_security' && <ShieldCheck className="h-5 w-5 text-teal-600" />}
+                  {activeDetailView === 'support_desk' && <Headphones className="h-5 w-5 text-emerald-600" />}
+                  {activeDetailView === 'referrals' && <Gift className="h-5 w-5 text-purple-600" />}
                 </span>
                 <div>
                   <CardTitle className="text-lg font-bold text-slate-900">
@@ -1091,6 +1280,8 @@ export default function AdminDashboard() {
                     {activeDetailView === 'customers' && `Registered Customers (${customersCount})`}
                     {activeDetailView === 'pending_verifications' && `Pending Artisan Trade Applications (${pendingArtisans.length})`}
                     {activeDetailView === 'kyc_security' && `Security & KYC Verification Registry (${kycVerifiedUsersCount}/${users.length} Verified)`}
+                    {activeDetailView === 'support_desk' && `Live Customer & Artisan Support Desk (${waitingSupportCount} Waiting)`}
+                    {activeDetailView === 'referrals' && `Viral Referral Program & Rewards Ledger (${allReferrals.length} Invites)`}
                   </CardTitle>
                   <p className="text-xs text-slate-500">
                     {activeDetailView === 'revenue' && 'Complete audit log of all completed escrow jobs and platform revenue.'}
@@ -1099,6 +1290,8 @@ export default function AdminDashboard() {
                     {activeDetailView === 'customers' && 'Directory of all registered clients hiring artisans.'}
                     {activeDetailView === 'pending_verifications' && 'Review and approve artisan identity credentials.'}
                     {activeDetailView === 'kyc_security' && 'Inspect NIN / Nigerian documents, view live selfies, and trace real-time GPS locations for verified customer & artisan safety.'}
+                    {activeDetailView === 'support_desk' && 'Directly communicate in real time with buyers, sellers, and artisans chatting through KonetBot.'}
+                    {activeDetailView === 'referrals' && 'Audit all referred users, monitor identity verification progress, and track automatic ₦3,000 wallet payouts.'}
                   </p>
                 </div>
               </div>
@@ -1158,6 +1351,32 @@ export default function AdminDashboard() {
                   }`}
                 >
                   Security &amp; GPS ({kycVerifiedUsersCount}/{users.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailView('support_desk')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                    activeDetailView === 'support_desk' 
+                      ? 'bg-slate-900 text-white shadow-sm' 
+                      : waitingSupportCount > 0
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
+                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <Headphones className="h-3.5 w-3.5" />
+                  <span>Support Desk {waitingSupportCount > 0 ? `(${waitingSupportCount})` : ''}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDetailView('referrals')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 ${
+                    activeDetailView === 'referrals' 
+                      ? 'bg-purple-700 text-white shadow-sm' 
+                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <Gift className="h-3.5 w-3.5" />
+                  <span>Referrals ({allReferrals.length})</span>
                 </button>
                 <button
                   type="button"
@@ -1291,19 +1510,25 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* Filter by Role */}
-                  <div className="flex items-center gap-1.5">
-                    {(['all', 'customer', 'artisan', 'admin'] as const).map((role) => (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(['all', 'customer', 'artisan', 'support_agent', 'admin'] as const).map((role) => (
                       <button
                         key={role}
                         type="button"
                         onClick={() => setUserRoleFilter(role)}
-                        className={`px-3 py-1 text-xs font-semibold rounded-md capitalize transition-colors ${
+                        className={`px-3 py-1 text-xs font-semibold rounded-md capitalize transition-colors flex items-center gap-1 ${
                           userRoleFilter === role 
                             ? 'bg-slate-900 text-white' 
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        {role}
+                        {role === 'support_agent' && <Headphones className="h-3 w-3" />}
+                        {role === 'support_agent' ? 'Support Agents' : role}
+                        {role === 'support_agent' && (
+                          <span className="ml-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.2 rounded-full">
+                            {users.filter(u => u.isSupportAgent || u.role === 'support_agent').length}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1338,13 +1563,20 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
-                              u.role === 'artisan' ? 'bg-blue-100 text-blue-800' :
-                              u.role === 'customer' ? 'bg-purple-100 text-purple-800' :
-                              'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {u.role}
-                            </span>
+                            {u.isSupportAgent || u.role === 'support_agent' ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <Headphones className="h-3 w-3 text-emerald-600" />
+                                Support Agent
+                              </span>
+                            ) : (
+                              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
+                                u.role === 'artisan' ? 'bg-blue-100 text-blue-800' :
+                                u.role === 'customer' ? 'bg-purple-100 text-purple-800' :
+                                'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {u.role}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-mono text-slate-800">{u.phoneNumber || '—'}</span>
@@ -1359,7 +1591,35 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                             {formatDateTime(u.createdAt)}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            {/* Appoint / Revoke Support Agent */}
+                            {isSuperAdmin && u.email !== user?.email && (
+                              u.isSupportAgent || u.role === 'support_agent' ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRevokeSupportAgent(u)}
+                                  className="h-7 text-[11px] border-amber-300 text-amber-800 hover:bg-amber-50 mr-2"
+                                  title="Revoke Live Support Agent Role"
+                                >
+                                  Revoke Agent
+                                </Button>
+                              ) : (
+                                u.role !== 'admin' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleAppointSupportAgent(u)}
+                                    className="h-7 text-[11px] border-emerald-300 text-emerald-800 hover:bg-emerald-50 mr-2 inline-flex items-center gap-1"
+                                    title="Appoint as Live Support Agent"
+                                  >
+                                    <Headphones className="h-3 w-3" />
+                                    Appoint Agent
+                                  </Button>
+                                )
+                              )
+                            )}
+
                             {u.role !== 'admin' && isSuperAdmin && (
                               <Button
                                 size="sm"
@@ -1829,6 +2089,147 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* 7. LIVE SUPPORT DESK */}
+            {activeDetailView === 'support_desk' && (
+              <LiveSupportDesk currentUser={user} />
+            )}
+
+            {/* 8. REFERRALS & REWARDS LEDGER DRILLDOWN */}
+            {activeDetailView === 'referrals' && (
+              <div className="space-y-6">
+                {/* Referral Overview Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                    <span className="text-xs font-semibold text-purple-800 uppercase tracking-wider block">Total Signups Referred</span>
+                    <span className="text-2xl font-black text-purple-950 mt-1 block">{allReferrals.length}</span>
+                    <span className="text-[11px] text-purple-700 mt-0.5 block">Via referral codes or invite links</span>
+                  </div>
+                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                    <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">KYC Verified Friends</span>
+                    <span className="text-2xl font-black text-emerald-950 mt-1 block">{verifiedReferralsCount}</span>
+                    <span className="text-[11px] text-emerald-700 mt-0.5 block">NIN/ID approved & verified</span>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider block">Pending ID Verification</span>
+                    <span className="text-2xl font-black text-amber-950 mt-1 block">{allReferrals.length - verifiedReferralsCount}</span>
+                    <span className="text-[11px] text-amber-700 mt-0.5 block">Awaiting KYC submission</span>
+                  </div>
+                  <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 shadow-sm">
+                    <span className="text-xs font-semibold text-emerald-300 uppercase tracking-wider block">Total Rewards Paid</span>
+                    <span className="text-2xl font-black text-amber-400 mt-1 block">₦{totalReferralRewardsDisbursed.toLocaleString()}</span>
+                    <span className="text-[11px] text-slate-300 mt-0.5 block">₦3,000 per 3 verified friends</span>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search referrer or invited friend..."
+                      value={referralSearchTerm}
+                      onChange={(e) => setReferralSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-500">
+                    Showing {filteredReferrals.length} of {allReferrals.length} referrals
+                  </span>
+                </div>
+
+                {/* Table */}
+                {filteredReferrals.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50">
+                    <Gift className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                    <p className="font-medium text-slate-700">No referral activity found</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      As soon as users share their referral links on WhatsApp and friends sign up, they will appear here live.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">Referrer</th>
+                          <th className="px-4 py-3">Friend Invited</th>
+                          <th className="px-4 py-3">Referral Code</th>
+                          <th className="px-4 py-3">Date Joined</th>
+                          <th className="px-4 py-3">KYC Verification</th>
+                          <th className="px-4 py-3 text-right">Milestone Reward Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {filteredReferrals.map((r) => {
+                          const isVerified = r.status === 'kyc_verified' || r.status === 'rewarded';
+                          const referrerUser = users.find(u => u.id === r.referrerId);
+                          return (
+                            <tr key={r.id} className="hover:bg-slate-50/80">
+                              <td className="px-4 py-3 font-medium text-slate-900">
+                                <div>
+                                  <span>{r.referrerName}</span>
+                                  <span className="block text-[10px] text-slate-400 font-mono">{r.referrerEmail}</span>
+                                  {referrerUser && (
+                                    <span className="inline-block mt-0.5 text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                                      Earned: ₦{(referrerUser.referralRewardsEarned || 0).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-slate-700">
+                                <div>
+                                  <span className="font-semibold text-slate-900">{r.referredUserName}</span>
+                                  <span className="block text-[10px] text-slate-400 font-mono">{r.referredUserEmail}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                                  {r.referralCode}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                                {formatDateTime(r.createdAt)}
+                              </td>
+                              <td className="px-4 py-3">
+                                {isVerified ? (
+                                  <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded text-[11px]">
+                                    <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                                    KYC Approved
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 font-semibold px-2 py-0.5 rounded text-[11px]">
+                                    <Clock className="h-3 w-3 text-amber-600" />
+                                    Pending KYC
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {r.status === 'rewarded' ? (
+                                  <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 border border-purple-300 font-bold px-2 py-0.5 rounded text-[11px]">
+                                    <Gift className="h-3 w-3 text-purple-600" />
+                                    Paid in Milestone ₦3k 🎉
+                                  </span>
+                                ) : isVerified ? (
+                                  <span className="text-[11px] font-semibold text-emerald-700">
+                                    Counted towards 3/3 Milestone
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400">
+                                    Needs KYC to unlock ₦3k
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

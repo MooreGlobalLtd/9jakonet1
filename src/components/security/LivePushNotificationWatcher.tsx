@@ -186,6 +186,71 @@ export default function LivePushNotificationWatcher() {
     }
   }, []);
 
+  // 5. Listen to Support/Admin notifications (Live Support Requests) if current user is admin OR support agent
+  useEffect(() => {
+    const isAuthorized = Boolean(
+      user && (
+        user.role === 'admin' ||
+        user.role === 'support_agent' ||
+        user.isSupportAgent ||
+        user.email === 'ayorindesamuel705@gmail.com' ||
+        user.email === 'support@9jakonet.com' ||
+        user.email === 'info@mooregloballtd.online'
+      )
+    );
+
+    if (!isAuthorized) return;
+
+    try {
+      const adminQuery = query(
+        collection(db, 'notifications'),
+        where('userId', '==', 'ADMIN'),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      );
+
+      const unsubscribe = onSnapshot(adminQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            const createdAt = data.createdAt || 0;
+
+            if (createdAt >= lastProcessedTimeRef.current) {
+              lastProcessedTimeRef.current = createdAt;
+
+              const targetLink = (user?.isSupportAgent || user?.role === 'support_agent') && user?.email !== 'ayorindesamuel705@gmail.com'
+                ? '/support-desk'
+                : '/admin';
+
+              showDevicePushNotification(data.title || '🎧 Live Support Request!', {
+                body: data.body || 'A user is waiting on KonetBot.',
+                link: targetLink,
+                tag: 'admin-live-support'
+              });
+
+              toast(data.title || '🎧 Live Support Request!', {
+                description: data.body,
+                duration: 9000,
+                action: {
+                  label: 'Open Desk',
+                  onClick: () => {
+                    window.location.href = targetLink;
+                  }
+                }
+              });
+            }
+          }
+        });
+      }, (err) => {
+        console.warn('Admin notification listener note:', err);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn('Failed to attach admin notification listener:', e);
+    }
+  }, [user?.role, user?.email, user?.isSupportAgent]);
+
   const handleEnableNotifications = async () => {
     const res = await requestBrowserNotificationPermission(user?.id);
     if (res) {

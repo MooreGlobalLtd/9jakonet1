@@ -82,6 +82,11 @@ export default function Footer() {
               <li>
                 <Link to="/wallet" className="hover:text-emerald-400 transition-colors">Wallet & Bank Payouts</Link>
               </li>
+              <li>
+                <Link to="/referrals" className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1.5 transition-colors">
+                  <span>🎁 Refer &amp; Earn ₦3,000</span>
+                </Link>
+              </li>
             </ul>
           </div>
 

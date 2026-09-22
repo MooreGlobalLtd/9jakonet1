@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
+import ReferralHub from '../components/referrals/ReferralHub';
 
 const NIGERIAN_BANKS = [
   "Access Bank",
@@ -470,6 +471,10 @@ export default function Wallet() {
         </div>
       </div>
 
+      {/* 🎁 Viral Refer & Earn ₦3,000 Hub */}
+      <div className="mt-10">
+        <ReferralHub user={user} variant="full" />
+      </div>
 
       {/* History Sections */}
         <div className="mt-12">

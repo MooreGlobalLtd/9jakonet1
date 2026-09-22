@@ -28,6 +28,8 @@ import Privacy from './pages/Privacy';
 import EscrowPolicy from './pages/EscrowPolicy';
 import PromoTrailer from './pages/PromoTrailer';
 import VerificationKYC from './pages/VerificationKYC';
+import SupportDesk from './pages/SupportDesk';
+import Referrals from './pages/Referrals';
 import { PWAInstallButton } from './components/PWAInstallButton';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -41,7 +43,29 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
+  // If the user is an appointed Support Agent (not super admin), route them strictly to the Support Desk
+  if ((user.isSupportAgent || user.role === 'support_agent') && 
+      user.email !== 'ayorindesamuel705@gmail.com' && 
+      user.email !== 'support@9jakonet.com' && 
+      user.email !== 'info@mooregloballtd.online') {
+    return <Navigate to="/support-desk" replace />;
+  }
   if (user.role !== 'admin' && user.email !== 'ayorindesamuel705@gmail.com' && user.email !== 'support@9jakonet.com' && user.email !== 'info@mooregloballtd.online') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
+function SupportAgentRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuthStore();
+  if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  const isSuperAdmin = user.role === 'admin' || 
+    user.email === 'ayorindesamuel705@gmail.com' || 
+    user.email === 'support@9jakonet.com' || 
+    user.email === 'info@mooregloballtd.online';
+  const isAgent = Boolean(user.isSupportAgent || user.role === 'support_agent');
+  if (!isSuperAdmin && !isAgent) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -71,6 +95,11 @@ export default function App() {
           <Route path="promo" element={<PromoTrailer />} />
           <Route path="privacy" element={<Privacy />} />
           <Route path="escrow-policy" element={<EscrowPolicy />} />
+          <Route path="referrals" element={
+            <ProtectedRoute>
+              <Referrals />
+            </ProtectedRoute>
+          } />
           
           <Route path="verify-kyc" element={
             <ProtectedRoute>
@@ -112,6 +141,12 @@ export default function App() {
             <AdminRoute>
               <AdminDashboard />
             </AdminRoute>
+          } />
+
+          <Route path="support-desk" element={
+            <SupportAgentRoute>
+              <SupportDesk />
+            </SupportAgentRoute>
           } />
 
           <Route path="jobs" element={

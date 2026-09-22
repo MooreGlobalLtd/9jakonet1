@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/button';
 import { PWAInstallButton } from '../PWAInstallButton';
-import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert, Bell, CheckCircle2, Smartphone } from 'lucide-react';
+import { Wrench, Menu, X, UserCircle, ShieldCheck, ShieldAlert, Bell, CheckCircle2, Smartphone, Headphones, Gift } from 'lucide-react';
 import { requestBrowserNotificationPermission, sendTestPushNotification } from '../../lib/notifications';
 import { toast } from 'sonner';
 
@@ -14,6 +14,7 @@ export default function Navbar() {
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [notifications, setNotifications] = useState<{id: string, text: string, time: number, isRead: boolean, link: string}[]>([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [waitingSupportCount, setWaitingSupportCount] = useState(0);
   const [pushPerm, setPushPerm] = useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
 
   useEffect(() => {
@@ -124,12 +125,33 @@ export default function Navbar() {
       updateCombinedNotifs();
     });
 
+    // 3. Listen to live support tickets if user is a Support Agent or Admin
+    const isAgentOrAdmin = Boolean(
+      user.role === 'admin' ||
+      user.isSupportAgent ||
+      user.role === 'support_agent' ||
+      user.email === 'ayorindesamuel705@gmail.com' ||
+      user.email === 'support@9jakonet.com' ||
+      user.email === 'info@mooregloballtd.online'
+    );
+
+    let unsubscribeSupport: (() => void) | undefined;
+    if (isAgentOrAdmin) {
+      const qSupport = query(collection(db, 'support_chats'), where('status', '==', 'waiting'));
+      unsubscribeSupport = onSnapshot(qSupport, (snap) => {
+        setWaitingSupportCount(snap.size);
+      }, (err) => {
+        console.warn('Support count note:', err);
+      });
+    }
+
     return () => {
       unsubscribeChats();
       unsubscribeEscrows();
       unsubscribeDirectNotifs();
+      if (unsubscribeSupport) unsubscribeSupport();
     };
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, user?.isSupportAgent]);
 
   const markNotifsAsRead = () => {
      setUnreadNotifCount(0);
@@ -170,6 +192,23 @@ export default function Navbar() {
                   <Link to="/admin" className="font-semibold text-amber-600 hover:text-amber-700">Admin Panel</Link>
                   <a href="/9jakonet_official_logo.png" download className="text-amber-600 hover:text-amber-700 font-bold ml-4" title="Download Official Logo">⬇ Logo</a>
                 </>
+              )}
+
+              {/* Dedicated Support Desk Link for Appointed Agents */}
+              {(user.isSupportAgent || user.role === 'support_agent') && (
+                <Link 
+                  to="/support-desk" 
+                  className="flex items-center gap-1.5 font-bold text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-3 py-1.5 rounded-full transition-colors shadow-2xs"
+                  title="Open 9jaKonet Live Support Desk"
+                >
+                  <Headphones className="h-3.5 w-3.5 text-emerald-700 animate-pulse" />
+                  <span>Support Desk</span>
+                  {waitingSupportCount > 0 && (
+                    <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full">
+                      {waitingSupportCount}
+                    </span>
+                  )}
+                </Link>
               )}
               
               <Link to="/jobs" className="hover:text-emerald-600">Jobs & Escrow</Link>
@@ -259,6 +298,15 @@ export default function Navbar() {
                   </div>
                 </div>
               </div>
+
+              <Link 
+                to="/referrals" 
+                className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-600 px-3.5 py-1.5 font-bold text-white text-xs hover:from-purple-800 hover:to-indigo-700 transition-all shadow-xs hover:shadow-md hover:scale-105"
+                title="Refer 3 Friends & Earn ₦3,000 Cash"
+              >
+                <Gift className="h-3.5 w-3.5 text-amber-300" />
+                <span>Refer &amp; Earn ₦3k</span>
+              </Link>
 
               <Link to="/wallet" className="flex items-center rounded-full bg-slate-100 px-4 py-1.5 font-semibold text-slate-700 hover:bg-slate-200 transition-colors gap-2 border border-slate-200 shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-wallet"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a8 8 0 0 1-5 7.59l-9.74-4.87a2 2 0 0 1-1.11-1.79V8a2 2 0 0 1 2-2h15Z"/><path d="M22 12v3h-3a2 2 0 0 1 0-4Z"/></svg>
@@ -357,6 +405,23 @@ export default function Navbar() {
                   </a>
                 </>
               )}
+              {(user.isSupportAgent || user.role === 'support_agent') && (
+                <Link 
+                  to="/support-desk" 
+                  onClick={closeMenu} 
+                  className="flex items-center justify-between rounded-md px-3 py-2 text-base font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                >
+                  <span className="flex items-center gap-2">
+                    <Headphones className="h-4 w-4 text-emerald-600" />
+                    Live Support Desk
+                  </span>
+                  {waitingSupportCount > 0 && (
+                    <span className="flex h-5 px-2 items-center justify-center rounded-full bg-amber-500 text-xs font-black text-slate-950">
+                      {waitingSupportCount} waiting
+                    </span>
+                  )}
+                </Link>
+              )}
               <Link to="/jobs" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Jobs &amp; Escrow
               </Link>
@@ -398,6 +463,19 @@ export default function Navbar() {
                   </button>
                 )}
               </div>
+              <Link 
+                to="/referrals" 
+                onClick={closeMenu} 
+                className="flex items-center justify-between rounded-md px-3 py-2 text-base font-bold text-purple-950 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Gift className="h-4 w-4 text-purple-600" />
+                  Refer &amp; Earn ₦3,000
+                </span>
+                <span className="text-[11px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full shadow-2xs">
+                  ₦3,000
+                </span>
+              </Link>
               <Link to="/wallet" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
                 Wallet: ₦{(user.walletBalance || 0).toLocaleString()}
               </Link>

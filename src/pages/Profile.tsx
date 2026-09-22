@@ -17,7 +17,8 @@ import {
   Wallet, 
   Camera, 
   UploadCloud,
-  Check
+  Check,
+  Gift
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { compressImageFile } from '../lib/imageCompressor';
@@ -294,6 +295,29 @@ export default function Profile() {
             </Link>
           </div>
         )}
+      </div>
+
+      {/* Referral Code & Rewards Card */}
+      <div className="mb-6 rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 via-indigo-50/50 to-purple-50 p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-purple-600 p-2.5 text-white shadow-xs">
+            <Gift className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Your Referral Code &amp; Earn ₦3,000</h3>
+            <p className="text-xs text-slate-600">Share with 3 friends who verify their ID &amp; receive ₦3,000 instant wallet credit.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <span className="font-mono text-xs font-black bg-white px-3 py-1.5 rounded-lg border border-purple-200 text-purple-900 shadow-2xs">
+            {user.referralCode || `KONET-${user.displayName?.toUpperCase().replace(/\s+/g, '').slice(0, 6) || 'SAMUEL'}-${user.id.slice(-4).toUpperCase()}`}
+          </span>
+          <Link to="/referrals">
+            <Button size="sm" className="bg-purple-700 hover:bg-purple-800 text-white text-xs">
+              Open Hub
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {successMessage && (

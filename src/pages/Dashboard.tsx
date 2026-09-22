@@ -12,6 +12,7 @@ import { Clock, Bell, Smartphone, CheckCircle2 } from 'lucide-react';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 import { requestBrowserNotificationPermission, sendTestPushNotification } from '../lib/notifications';
 import { toast } from 'sonner';
+import ReferralHub from '../components/referrals/ReferralHub';
 
 export default function Dashboard() {
   const { user, artisanProfile } = useAuthStore();
@@ -164,6 +165,11 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* 🎁 Viral Refer 3 Friends & Earn ₦3,000 Milestone Banner */}
+      <div className="mb-8">
+        <ReferralHub user={user} variant="compact" />
+      </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
