@@ -10,10 +10,11 @@ import {
   Sparkles, 
   CheckCircle2, 
   MessageSquareQuote,
-  Clock
+  Clock,
+  GripHorizontal
 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { motion } from 'framer-motion';
+import { motion, useDragControls } from 'framer-motion';
 import { getSmartBotAnswer } from '../../lib/botEngine';
 
 interface ChatMessage {
@@ -48,6 +49,7 @@ export default function KonetBot() {
   const [showNotificationBadge, setShowNotificationBadge] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragControls = useDragControls();
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -232,12 +234,24 @@ export default function KonetBot() {
   };
 
   return (
-    <div id="konetbot-container" className="fixed bottom-5 right-5 z-50 flex flex-col items-end pointer-events-none">
-      {/* Floating Launcher Button */}
+    <motion.div
+      id="konetbot-container"
+      drag
+      dragMomentum={false}
+      dragElastic={0.08}
+      dragConstraints={{
+        top: typeof window !== 'undefined' ? -window.innerHeight + 120 : -600,
+        bottom: 0,
+        left: typeof window !== 'undefined' ? -window.innerWidth + 90 : -350,
+        right: 0
+      }}
+      className="fixed bottom-5 right-5 z-50 flex flex-col items-end pointer-events-none"
+    >
+      {/* Floating Launcher Button (Draggable & Clickable) */}
       {!isOpen && (
-        <div className="relative group pointer-events-auto">
+        <div className="relative group pointer-events-auto cursor-grab active:cursor-grabbing">
           {/* Active online pulse ring */}
-          <span className="absolute -top-1 -right-1 flex h-4 w-4">
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 pointer-events-none">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white"></span>
           </span>
@@ -246,7 +260,7 @@ export default function KonetBot() {
           {showNotificationBadge && (
             <div 
               onClick={() => setIsOpen(true)}
-              className="hidden sm:flex absolute right-16 bottom-1 bg-white border border-emerald-200 shadow-xl rounded-2xl px-3.5 py-2 items-center gap-2 cursor-pointer hover:border-emerald-400 transition-all w-60 animate-in fade-in slide-in-from-right-2 duration-300"
+              className="hidden sm:flex absolute right-16 bottom-1 bg-white border border-emerald-200 shadow-xl rounded-2xl px-3.5 py-2 items-center gap-2 cursor-pointer hover:border-emerald-400 transition-all w-60 animate-in fade-in slide-in-from-right-2 duration-300 pointer-events-auto"
             >
               <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></div>
               <p className="text-xs font-medium text-slate-700 leading-snug">
@@ -265,10 +279,12 @@ export default function KonetBot() {
             </div>
           )}
 
-          <button
+          <div
             id="konetbot-open-button"
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-3.5 rounded-full shadow-2xl transition-all duration-200 transform hover:scale-105 active:scale-95 border-2 border-emerald-500"
+            role="button"
+            tabIndex={0}
+            className="flex items-center gap-2.5 bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-3.5 rounded-full shadow-2xl transition-transform duration-200 transform hover:scale-105 active:scale-95 border-2 border-emerald-500 select-none"
             aria-label="Open 9jaKonet AI Support Assistant"
           >
             <div className="relative">
@@ -279,7 +295,7 @@ export default function KonetBot() {
             <span className="bg-emerald-900/60 text-[10px] text-emerald-200 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/40">
               Active
             </span>
-          </button>
+          </div>
         </div>
       )}
 
@@ -289,8 +305,8 @@ export default function KonetBot() {
           id="konetbot-chat-window"
           className="w-[92vw] sm:w-[410px] h-[550px] max-h-[82vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200 pointer-events-auto"
         >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-emerald-800 to-slate-900 text-white p-3.5 flex items-center justify-between shadow-md">
+          {/* Header - acts as drag handle */}
+          <div className="bg-gradient-to-r from-emerald-800 to-slate-900 text-white p-3.5 flex items-center justify-between shadow-md cursor-grab active:cursor-grabbing select-none">
             <div className="flex items-center gap-2.5">
               <div className="relative h-10 w-10 rounded-full bg-emerald-600 border-2 border-white/40 flex items-center justify-center shrink-0 shadow-inner">
                 <Bot className="h-6 w-6 text-white" />
@@ -311,10 +327,13 @@ export default function KonetBot() {
             </div>
 
             <div className="flex items-center gap-1 text-slate-300">
+              <div className="text-slate-400 p-1 mr-0.5" title="Drag to move chat anywhere">
+                <GripHorizontal className="h-4 w-4 opacity-70" />
+              </div>
               <button
                 id="konetbot-reset-button"
                 onClick={handleResetChat}
-                className="p-1.5 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-1.5 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                 title="Restart conversation"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -322,7 +341,7 @@ export default function KonetBot() {
               <button
                 id="konetbot-minimize-button"
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                className="p-1.5 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                 title="Minimize chat"
               >
                 <Minimize2 className="h-4 w-4" />
@@ -445,6 +464,6 @@ export default function KonetBot() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

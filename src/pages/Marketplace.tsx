@@ -1038,7 +1038,8 @@ export default function Marketplace() {
                           {/* Artisan Inspection Bridge */}
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setInspectionTargetItem(item);
                               setShowInspectionModal(true);
                             }}
@@ -1914,15 +1915,17 @@ export default function Marketplace() {
       )}
 
       {/* Book Verified Artisan Inspection Modal (Bridge between Marketplace and Artisans) */}
-      <BookInspectionModal
-        isOpen={showInspectionModal}
-        onClose={() => {
-          setShowInspectionModal(false);
-          setInspectionTargetItem(null);
-        }}
-        item={inspectionTargetItem}
-        user={user}
-      />
+      {showInspectionModal && inspectionTargetItem && (
+        <BookInspectionModal
+          isOpen={showInspectionModal}
+          onClose={() => {
+            setShowInspectionModal(false);
+            setInspectionTargetItem(null);
+          }}
+          item={inspectionTargetItem}
+          user={user}
+        />
+      )}
     </div>
   );
 }

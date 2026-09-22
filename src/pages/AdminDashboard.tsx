@@ -10,7 +10,7 @@ import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
 import { withTimeout } from '../lib/timeout';
-import { showDevicePushNotification } from '../lib/notifications';
+import { showDevicePushNotification, triggerGlobalBroadcastPush } from '../lib/notifications';
 import { toast } from 'sonner';
 
 interface Withdrawal {
@@ -65,6 +65,19 @@ export default function AdminDashboard() {
   const [broadcastLink, setBroadcastLink] = useState('/dashboard');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isSendingTestAlert, setIsSendingTestAlert] = useState(false);
+  const [activePushDevices, setActivePushDevices] = useState<number | null>(null);
+
+  // Fetch registered push devices count
+  useEffect(() => {
+    fetch('/api/push/subscriptions-count')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && typeof data.count === 'number') {
+          setActivePushDevices(data.count);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 1-Click: Send Instant Test Alert to All Phones & Registered Users
   const handleSendGlobalTestAlert = async () => {
@@ -77,7 +90,19 @@ export default function AdminDashboard() {
         tag: 'admin-global-test'
       });
 
-      // 2. Add broadcast document for ALL_USERS (fires on every connected phone)
+      // 2. Broadcast Web Push to all registered devices via server
+      const pushResult = await triggerGlobalBroadcastPush({
+        title: '🔔 9jaKonet Alert Active: Your device is connected!',
+        body: 'Live system test sent from the Admin Panel. You will now receive all job alerts, messages, and platform updates directly on your phone!',
+        link: '/dashboard',
+        tag: 'admin-global-test'
+      });
+
+      if (typeof pushResult.totalDevices === 'number') {
+        setActivePushDevices(pushResult.totalDevices);
+      }
+
+      // 3. Add broadcast document for ALL_USERS (fires on every connected phone)
       await addDoc(collection(db, 'notifications'), {
         userId: 'ALL_USERS',
         title: '🔔 9jaKonet Alert Active: Your device is connected!',
@@ -88,7 +113,7 @@ export default function AdminDashboard() {
         createdAt: Date.now()
       });
 
-      // 3. Also write directly to all user accounts
+      // 4. Also write directly to all user accounts
       const targetUsers = users.length > 0 ? users : [{ id: user?.id || 'admin' }];
       for (const u of targetUsers) {
         if (u.id) {
@@ -104,7 +129,11 @@ export default function AdminDashboard() {
         }
       }
 
-      toast.success(`⚡ Instant test alert pushed to all phones & ${targetUsers.length} user accounts!`);
+      if (pushResult.sentCount > 0) {
+        toast.success(`🚀 Test alert pushed directly to ${pushResult.sentCount} phones/devices and ${targetUsers.length} user accounts!`);
+      } else {
+        toast.success(`⚡ Instant test alert pushed to all connected user accounts and broadcast feed!`);
+      }
     } catch (err: any) {
       console.error('Error sending global test alert:', err);
       toast.error('Failed to send global test alert.');
@@ -128,7 +157,19 @@ export default function AdminDashboard() {
         tag: 'admin-broadcast'
       });
 
-      // 2. Send broadcast document for ALL_USERS
+      // 2. Broadcast via Web Push to all registered devices
+      const pushResult = await triggerGlobalBroadcastPush({
+        title: `📢 ${broadcastTitle.trim()}`,
+        body: broadcastBody.trim(),
+        link: broadcastLink.trim() || '/dashboard',
+        tag: 'admin-broadcast'
+      });
+
+      if (typeof pushResult.totalDevices === 'number') {
+        setActivePushDevices(pushResult.totalDevices);
+      }
+
+      // 3. Send broadcast document for ALL_USERS
       await addDoc(collection(db, 'notifications'), {
         userId: 'ALL_USERS',
         title: `📢 ${broadcastTitle.trim()}`,
@@ -139,7 +180,7 @@ export default function AdminDashboard() {
         createdAt: Date.now()
       });
 
-      // 3. Send notification document to all registered users
+      // 4. Send notification document to all registered users
       const targetUsers = users.length > 0 ? users : [{ id: user?.id || 'admin' }];
       let count = 0;
       for (const u of targetUsers) {
@@ -156,7 +197,12 @@ export default function AdminDashboard() {
           count++;
         }
       }
-      toast.success(`App update pushed to all active phones & ${count} accounts!`);
+
+      if (pushResult.sentCount > 0) {
+        toast.success(`📢 Broadcast pushed to ${pushResult.sentCount} phones/devices and ${count} user accounts!`);
+      } else {
+        toast.success(`App update pushed to all active phones & ${count} accounts!`);
+      }
       setBroadcastTitle('');
       setBroadcastBody('');
     } catch (err: any) {
@@ -2064,7 +2110,9 @@ export default function AdminDashboard() {
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-medium">
                   <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
-                  Broadcasting to {users.length} registered accounts &amp; all active phones
+                  {activePushDevices !== null && activePushDevices > 0
+                    ? `${activePushDevices} push device(s) • ${users.length} accounts`
+                    : `Broadcasting to all phones & ${users.length} accounts`}
                 </span>
               </div>
             </div>
@@ -2083,12 +2131,22 @@ export default function AdminDashboard() {
                 <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
                   Dispatches a live vibration and pop-up notification to all devices presently using the app or registered, verifying lock screen delivery immediately.
                 </p>
+                {activePushDevices !== null && activePushDevices > 0 ? (
+                  <p className="text-[11px] text-emerald-400/90 font-medium flex items-center gap-1.5 pt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-ping" />
+                    {activePushDevices} phone(s) &amp; browser devices currently registered for background push.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 pt-0.5">
+                    Note: Devices receive background push automatically once users allow notifications when prompted.
+                  </p>
+                )}
               </div>
               <Button
                 type="button"
                 onClick={handleSendGlobalTestAlert}
                 disabled={isSendingTestAlert}
-                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 h-10 shrink-0 shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-5 h-10 shrink-0 shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
               >
                 <Zap className="h-4 w-4 fill-slate-950" />
                 {isSendingTestAlert ? 'Pinging All Phones...' : 'Send Test Alert to All Phones'}

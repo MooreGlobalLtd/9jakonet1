@@ -270,13 +270,24 @@ export default function Dashboard() {
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                       <span>Your phone is connected. You will automatically receive lock screen alerts for new chats, jobs, and platform updates.</span>
                     </div>
+                    <Link to="/notifications">
+                      <Button 
+                        type="button" 
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-1.5"
+                      >
+                        <Bell className="h-3.5 w-3.5 text-emerald-600" />
+                        View Notifications &amp; Updates Feed &rarr;
+                      </Button>
+                    </Link>
                     {user?.role === 'admin' && (
                       <Link to="/admin#push-broadcast">
                         <Button 
                           type="button" 
                           variant="outline"
                           size="sm"
-                          className="w-full text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5 mt-2"
+                          className="w-full text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 flex items-center justify-center gap-1.5"
                         >
                           <Bell className="h-3.5 w-3.5" />
                           Open Admin Push Dispatcher &rarr;

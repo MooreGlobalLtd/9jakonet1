@@ -185,20 +185,22 @@ export default function Navbar() {
               
                             <PWAInstallButton variant="nav" />
               <div className="relative group">
-                <button 
+                <Link
+                  to="/notifications"
                   onMouseEnter={markNotifsAsRead}
                   className="relative p-2 text-slate-600 hover:text-emerald-600 hover:bg-slate-100 rounded-full transition-colors flex items-center justify-center"
+                  title="Notifications & Updates"
                 >
                   <Bell className="h-5 w-5" />
                   {unreadNotifCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 ring-2 ring-white"></span>
                   )}
-                </button>
+                </Link>
                 
                 <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 shadow-xl rounded-xl overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 origin-top-right z-50">
                   <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 flex items-center justify-between">
                     <h3 className="font-semibold text-slate-900">Notifications</h3>
-                    <span className="text-xs text-slate-500">{notifications.length} Recent</span>
+                    <Link to="/notifications" className="text-xs text-emerald-600 hover:underline font-medium">View All</Link>
                   </div>
                   <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
                     {notifications.length === 0 ? (
@@ -251,8 +253,8 @@ export default function Navbar() {
                         <span>Enable Phone Push Alerts</span>
                       </button>
                     )}
-                    <Link to="/dashboard" className="block text-center text-xs font-medium text-slate-500 hover:text-slate-800 pt-1">
-                      Go to Dashboard &rarr;
+                    <Link to="/notifications" className="block text-center text-xs font-semibold text-emerald-700 hover:text-emerald-800 pt-1">
+                      View All Notifications &amp; Updates &rarr;
                     </Link>
                   </div>
                 </div>
@@ -301,9 +303,10 @@ export default function Navbar() {
         <div className="md:hidden flex items-center gap-1">
           {user && (
             <Link 
-              to="/dashboard" 
+              to="/notifications" 
               onClick={markNotifsAsRead}
               className="relative p-2 text-slate-600 hover:text-emerald-600 rounded-full flex items-center justify-center"
+              title="Notifications & Updates"
             >
               <Bell className="h-5 w-5" />
               {unreadNotifCount > 0 && (
@@ -355,7 +358,7 @@ export default function Navbar() {
                 </>
               )}
               <Link to="/jobs" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50">
-                Jobs & Escrow
+                Jobs &amp; Escrow
               </Link>
               <Link to="/messages" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between">
                 <span>Messages</span>
@@ -365,8 +368,11 @@ export default function Navbar() {
                   </span>
                 )}
               </Link>
-              <Link to="/dashboard" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between">
-                <span>Notifications</span>
+              <Link to="/notifications" onClick={closeMenu} className="block rounded-md px-3 py-2 text-base font-medium text-slate-700 hover:bg-slate-50 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-emerald-600" />
+                  Notifications &amp; Updates
+                </span>
                 {unreadNotifCount > 0 && (
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
                     {unreadNotifCount}

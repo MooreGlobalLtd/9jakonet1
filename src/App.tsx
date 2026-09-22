@@ -15,6 +15,7 @@ import Register from './pages/Register';
 import Explore from './pages/Explore';
 import Marketplace from './pages/Marketplace';
 import Dashboard from './pages/Dashboard';
+import Notifications from './pages/Notifications';
 import ArtisanSetup from './pages/ArtisanSetup';
 import Profile from './pages/Profile';
 import Messages from './pages/Messages';
@@ -86,6 +87,12 @@ export default function App() {
           <Route path="dashboard" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+
+          <Route path="notifications" element={
+            <ProtectedRoute>
+              <Notifications />
             </ProtectedRoute>
           } />
 

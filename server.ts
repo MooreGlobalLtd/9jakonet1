@@ -4,6 +4,7 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { Resend } from 'resend';
 import { GoogleGenAI } from '@google/genai';
+import webpush from 'web-push';
 
 // Lazy initialize Gemini to avoid crashing if the API key is missing
 let geminiClient: GoogleGenAI | null = null;
@@ -80,6 +81,72 @@ function getResend(req?: express.Request) {
   return null;
 }
 
+// Web Push / VAPID setup
+const VAPID_FILE = path.join(process.cwd(), 'vapid-keys.json');
+let vapidKeys = {
+  publicKey: 'BFcZ3FeT1zg7rWzJRokV8EAQTjjFvK0w_y5Usz1WOfZGHEQnV77x7CrVGxB9XE_uXQrAbedxTGJ3V3a-nRoU63U',
+  privateKey: 'wzPSnD4mNK71OZDT_R9fiL4rC0ADlBCokZ6JDXh49Tg'
+};
+
+try {
+  if (fs.existsSync(VAPID_FILE)) {
+    const raw = fs.readFileSync(VAPID_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed.publicKey && parsed.privateKey) {
+      vapidKeys = parsed;
+    }
+  } else {
+    fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2), 'utf-8');
+  }
+} catch (e) {
+  console.error('Failed to load vapid-keys.json:', e);
+}
+
+if (vapidKeys.publicKey && vapidKeys.privateKey) {
+  try {
+    webpush.setVapidDetails(
+      'mailto:support@9jakonet.com',
+      vapidKeys.publicKey,
+      vapidKeys.privateKey
+    );
+  } catch (err) {
+    console.error('Failed to set VAPID details on webpush:', err);
+  }
+}
+
+// Subscriptions persistence
+const PUSH_SUBS_FILE = path.join(process.cwd(), 'push-subscriptions.json');
+interface StoredSubscription {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userId?: string | null;
+  userAgent?: string;
+  createdAt: number;
+  lastActive: number;
+}
+let pushSubscriptions: StoredSubscription[] = [];
+
+try {
+  if (fs.existsSync(PUSH_SUBS_FILE)) {
+    const raw = fs.readFileSync(PUSH_SUBS_FILE, 'utf-8');
+    pushSubscriptions = JSON.parse(raw);
+  }
+} catch (e) {
+  console.error('Failed to load push-subscriptions.json:', e);
+  pushSubscriptions = [];
+}
+
+function savePushSubscriptions() {
+  try {
+    fs.writeFileSync(PUSH_SUBS_FILE, JSON.stringify(pushSubscriptions, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Failed to save push-subscriptions.json:', e);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -118,6 +185,191 @@ async function startServer() {
     } catch (error: any) {
       console.error('Exception thrown while sending email via Resend:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to send email' });
+    }
+  });
+
+  // ==========================================
+  // Web Push Notification & Device Endpoints
+  // ==========================================
+
+  // 1. Get Public VAPID Key for client PushManager subscription
+  app.get('/api/push/vapid-public-key', (req, res) => {
+    res.json({
+      success: true,
+      publicKey: vapidKeys.publicKey
+    });
+  });
+
+  // 2. Query total active registered devices
+  app.get('/api/push/subscriptions-count', (req, res) => {
+    res.json({
+      success: true,
+      count: pushSubscriptions.length
+    });
+  });
+
+  // 3. Register or update a device's push subscription
+  app.post('/api/push/subscribe', (req, res) => {
+    try {
+      const { subscription, userId, userAgent } = req.body;
+      if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+        return res.status(400).json({ success: false, error: 'Invalid PushSubscription payload' });
+      }
+
+      const existingIndex = pushSubscriptions.findIndex(s => s.endpoint === subscription.endpoint);
+      const now = Date.now();
+      if (existingIndex >= 0) {
+        pushSubscriptions[existingIndex] = {
+          ...pushSubscriptions[existingIndex],
+          keys: subscription.keys,
+          userId: userId !== undefined ? userId : pushSubscriptions[existingIndex].userId,
+          userAgent: userAgent || pushSubscriptions[existingIndex].userAgent,
+          lastActive: now
+        };
+      } else {
+        pushSubscriptions.push({
+          endpoint: subscription.endpoint,
+          keys: subscription.keys,
+          userId: userId || null,
+          userAgent: userAgent || '',
+          createdAt: now,
+          lastActive: now
+        });
+      }
+
+      savePushSubscriptions();
+      console.log(`[Push] Device registered. Total active phones & devices: ${pushSubscriptions.length}`);
+      res.json({
+        success: true,
+        message: 'Push subscription registered successfully',
+        totalDevices: pushSubscriptions.length
+      });
+    } catch (err: any) {
+      console.error('[Push] Registration error:', err);
+      res.status(500).json({ success: false, error: err.message || 'Subscription failed' });
+    }
+  });
+
+  // 4. Broadcast Web Push notification to ALL registered phones/devices
+  app.post('/api/push/send-to-all', async (req, res) => {
+    try {
+      const { title, body, link, icon, badge, tag } = req.body;
+      const notificationPayload = JSON.stringify({
+        title: title || '🔔 9jaKonet Alert Active: Your device is connected!',
+        body: body || 'Live system test from Admin Panel. All active phones and accounts have been pinged.',
+        url: link || '/dashboard',
+        link: link || '/dashboard',
+        icon: icon || '/pwa-192x192.png',
+        badge: badge || '/pwa-192x192.png',
+        tag: tag || '9jakonet-alert',
+        timestamp: Date.now()
+      });
+
+      if (pushSubscriptions.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No external push device subscriptions registered yet. Alert was saved to platform broadcast.',
+          sentCount: 0,
+          totalDevices: 0
+        });
+      }
+
+      const invalidEndpoints = new Set<string>();
+      let sentCount = 0;
+
+      const sendPromises = pushSubscriptions.map(async (sub) => {
+        try {
+          await webpush.sendNotification({
+            endpoint: sub.endpoint,
+            keys: sub.keys
+          }, notificationPayload, {
+            TTL: 60 * 60 * 24 // Retain on push service for 24h if device is offline
+          });
+          sentCount++;
+        } catch (err: any) {
+          // 404 or 410 indicates the push token expired or user removed app/permission
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            invalidEndpoints.add(sub.endpoint);
+          } else {
+            console.warn(`[Push] Delivery note for device:`, err.message || err);
+          }
+        }
+      });
+
+      await Promise.all(sendPromises);
+
+      // Clean up invalid or expired endpoints
+      if (invalidEndpoints.size > 0) {
+        pushSubscriptions = pushSubscriptions.filter(s => !invalidEndpoints.has(s.endpoint));
+        savePushSubscriptions();
+      }
+
+      console.log(`[Push] Broadcast sent to ${sentCount}/${pushSubscriptions.length} devices.`);
+      res.json({
+        success: true,
+        sentCount,
+        totalDevices: pushSubscriptions.length
+      });
+    } catch (err: any) {
+      console.error('[Push] Broadcast delivery failure:', err);
+      res.status(500).json({ success: false, error: err.message || 'Failed to send broadcast push' });
+    }
+  });
+
+  // 5. Send targeted Web Push notification to a specific user's phone(s)
+  app.post('/api/push/send-to-user', async (req, res) => {
+    try {
+      const { userId, title, body, link, tag } = req.body;
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'userId is required' });
+      }
+
+      const targetSubs = pushSubscriptions.filter(s => s.userId === userId);
+      if (targetSubs.length === 0) {
+        return res.json({ success: true, sentCount: 0, message: 'User has no registered push devices' });
+      }
+
+      const notificationPayload = JSON.stringify({
+        title: title || '9jaKonet Alert',
+        body: body || 'You have a new update.',
+        url: link || '/dashboard',
+        link: link || '/dashboard',
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        tag: tag || 'user-alert',
+        timestamp: Date.now()
+      });
+
+      const invalidEndpoints = new Set<string>();
+      let sentCount = 0;
+
+      const sendPromises = targetSubs.map(async (sub) => {
+        try {
+          await webpush.sendNotification({
+            endpoint: sub.endpoint,
+            keys: sub.keys
+          }, notificationPayload, {
+            TTL: 60 * 60 * 24
+          });
+          sentCount++;
+        } catch (err: any) {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            invalidEndpoints.add(sub.endpoint);
+          }
+        }
+      });
+
+      await Promise.all(sendPromises);
+
+      if (invalidEndpoints.size > 0) {
+        pushSubscriptions = pushSubscriptions.filter(s => !invalidEndpoints.has(s.endpoint));
+        savePushSubscriptions();
+      }
+
+      res.json({ success: true, sentCount });
+    } catch (err: any) {
+      console.error('[Push] Targeted send failure:', err);
+      res.status(500).json({ success: false, error: err.message || 'Failed to send user push' });
     }
   });
 
