@@ -213,7 +213,7 @@ export async function sendInAppNotification(payload: NotificationPayload): Promi
       createdAt: Date.now()
     });
 
-    // 2. Send targeted background push via server
+    // 2. Send targeted background push to recipient's registered device(s) via server
     fetch('/api/push/send-to-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -225,13 +225,6 @@ export async function sendInAppNotification(payload: NotificationPayload): Promi
         tag: payload.type || '9jakonet'
       })
     }).catch(err => console.warn('[Push] Targeted push send note:', err));
-
-    // 3. Local fallback notification if on same device
-    showDevicePushNotification(payload.title, {
-      body: payload.body,
-      link: payload.link,
-      tag: payload.type || '9jakonet'
-    }).catch(() => {});
   } catch (err) {
     console.warn('Failed to send in-app notification:', err);
   }

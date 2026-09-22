@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ArtisanProfile, User } from '../types';
@@ -234,18 +234,25 @@ export default function Explore() {
     );
   };
 
+  const visitedArtisansRef = useRef<Set<string>>(new Set());
+
   const handleViewProfile = (artisan: ArtisanProfile & { user: User }) => {
     setSelectedArtisan(artisan);
-    if (artisan.userId && (!user || user.id !== artisan.userId)) {
-      sendInAppNotification({
-        userId: artisan.userId,
-        title: '👀 Profile Visitor Alert!',
-        body: user?.displayName 
-          ? `${user.displayName} is viewing your verified profile on 9jaKonet.`
-          : `A customer looking for ${artisan.tradeCategory || 'services'} is viewing your profile.`,
-        link: '/dashboard',
-        type: 'general'
-      });
+    const targetUserId = artisan.userId || artisan.user?.id;
+    // Only dispatch visitor notification to the artisan being viewed (never to the viewer)
+    if (targetUserId && (!user || user.id !== targetUserId)) {
+      if (!visitedArtisansRef.current.has(targetUserId)) {
+        visitedArtisansRef.current.add(targetUserId);
+        sendInAppNotification({
+          userId: targetUserId,
+          title: '👀 Profile Visitor Alert!',
+          body: user?.displayName 
+            ? `${user.displayName} is viewing your verified profile on 9jaKonet.`
+            : `A customer looking for ${artisan.tradeCategory || 'services'} is viewing your profile.`,
+          link: '/dashboard',
+          type: 'general'
+        });
+      }
     }
   };
 
