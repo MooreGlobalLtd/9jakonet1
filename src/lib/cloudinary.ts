@@ -12,7 +12,8 @@ export const uploadToCloudinary = async (fileOrDataUrl: File | Blob | string): P
   try {
     const response = await axios.post(
       `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-      formData
+      formData,
+      { timeout: 20000 }
     );
     // Returns the secure public URL from Cloudinary
     return response.data.secure_url;
@@ -30,7 +31,8 @@ export const uploadVideoToCloudinary = async (fileOrDataUrl: File | Blob | strin
   try {
     const response = await axios.post(
       `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
-      formData
+      formData,
+      { timeout: 35000 }
     );
     return response.data.secure_url;
   } catch (error: any) {

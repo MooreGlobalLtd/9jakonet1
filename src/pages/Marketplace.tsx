@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { uploadToCloudinary, uploadVideoToCloudinary } from '../lib/cloudinary';
+import { compressImageFile } from '../lib/imageCompressor';
 import { 
   Store, MapPin, Tag, Plus, Loader2, X, Phone, Navigation, MessageCircle, 
   ShoppingBag, ShieldCheck, Car, Smartphone, Laptop, Sofa, Shirt, Home, 
@@ -165,6 +166,22 @@ export default function Marketplace() {
   const [stateName, setStateName] = useState('Lagos');
   const [cityName, setCityName] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [postingStatusText, setPostingStatusText] = useState<string>('Posting Ad...');
+
+  const handleImageChange = (file: File | null) => {
+    setSelectedImage(file);
+    if (file) {
+      try {
+        const url = URL.createObjectURL(file);
+        setImagePreviewUrl(url);
+      } catch (e) {
+        setImagePreviewUrl(null);
+      }
+    } else {
+      setImagePreviewUrl(null);
+    }
+  };
 
   // New Post Ad Inputs: Distress sale, WhatsApp, Video, Artisan Trade
   const [isDistressSale, setIsDistressSale] = useState(false);
@@ -209,16 +226,43 @@ export default function Marketplace() {
 
   // Fetch Items in Real-Time
   useEffect(() => {
+    let isMounted = true;
     const q = query(collection(db, 'marketplace_items'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
-      const itemsList: MarketplaceItem[] = [];
-      snap.forEach(docSnap => {
-        itemsList.push({ id: docSnap.id, ...docSnap.data() } as MarketplaceItem);
-      });
-      setItems(itemsList);
-      setLoading(false);
-    });
-    return () => unsub();
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        if (!isMounted) return;
+        const itemsList: MarketplaceItem[] = [];
+        snap.forEach(docSnap => {
+          itemsList.push({ id: docSnap.id, ...docSnap.data() } as MarketplaceItem);
+        });
+        setItems(itemsList);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn('Marketplace query warning, attempting fallback:', error);
+        // Fallback: fetch without orderBy if index is creating or network issue
+        getDocs(collection(db, 'marketplace_items'))
+          .then((snap) => {
+            if (!isMounted) return;
+            const itemsList: MarketplaceItem[] = [];
+            snap.forEach(docSnap => {
+              itemsList.push({ id: docSnap.id, ...docSnap.data() } as MarketplaceItem);
+            });
+            itemsList.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            setItems(itemsList);
+            setLoading(false);
+          })
+          .catch((err) => {
+            console.error('Marketplace fetch error:', err);
+            if (isMounted) setLoading(false);
+          });
+      }
+    );
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   // Format Condition Badge
@@ -430,72 +474,143 @@ export default function Marketplace() {
     e.preventDefault();
     if (!user) return navigate('/login');
     if (!selectedImage) {
-      toast.error('Please select at least one photo.');
+      toast.error('Please select at least one photo for your listing.');
+      return;
+    }
+
+    if (!title.trim()) {
+      toast.error('Please enter a title for your listing.');
+      return;
+    }
+
+    if (!price || Number(price) < 0) {
+      toast.error('Please enter a valid price in Naira.');
       return;
     }
     
     setIsSubmitting(true);
+    setPostingStatusText('Optimizing photo...');
+
     try {
-      const userDoc = await getDoc(doc(db, 'users', user.id));
-      const userPhone = userDoc.exists() ? userDoc.data().phone || '' : '';
+      // 1. Fetch user phone with fallback
+      let userPhone = user.phone || user.phoneNumber || '';
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.id));
+        if (userDoc.exists()) {
+          userPhone = userDoc.data().phoneNumber || userDoc.data().phone || userPhone;
+        }
+      } catch (phoneErr) {
+        console.warn('Could not read user profile phone, using fallback:', phoneErr);
+      }
 
-      const imageUrl = await uploadToCloudinary(selectedImage);
+      // 2. Compress image on client to speed up upload & prevent timeout on slow mobile networks
+      setPostingStatusText('Optimizing image size...');
+      let compressedDataUrl = '';
+      try {
+        compressedDataUrl = await compressImageFile(selectedImage, { maxDimension: 1080, quality: 0.8 });
+      } catch (compErr) {
+        console.warn('Image compression warning, using raw file:', compErr);
+      }
 
-      // Handle optional 10-second inspection video
+      // 3. Upload to Cloudinary with compressed base64 fallback
+      setPostingStatusText('Uploading item photo...');
+      let finalImageUrl = compressedDataUrl;
+      try {
+        const uploadedUrl = await uploadToCloudinary(compressedDataUrl || selectedImage);
+        if (uploadedUrl) {
+          finalImageUrl = uploadedUrl;
+        }
+      } catch (cloudErr) {
+        console.warn('Cloudinary upload warning, using compressed image fallback:', cloudErr);
+        // If Cloudinary is temporarily unreachable or blocked, compressedDataUrl works directly
+        if (!finalImageUrl) {
+          throw new Error('Image upload failed. Please try a different photo or check your connection.');
+        }
+      }
+
+      // 4. Handle optional 10-second inspection video
       let finalVideoUrl = videoUrlInput.trim();
       if (selectedVideoFile) {
+        setPostingStatusText('Uploading inspection video clip...');
         try {
           finalVideoUrl = await uploadVideoToCloudinary(selectedVideoFile);
         } catch (vidErr) {
           console.warn('Video upload error:', vidErr);
-          toast.error('Video upload failed, continuing with photo listing.');
+          toast.error('Video upload skipped due to file size, continuing with photos.');
         }
       }
       
-      const newItem: Omit<MarketplaceItem, 'id'> = {
+      // 5. Build clean Firestore document with STRICTLY NO undefined values
+      setPostingStatusText('Publishing listing live...');
+      const cleanItemData: Record<string, any> = {
         sellerId: user.id,
-        sellerName: user.displayName,
-        sellerPhone: userPhone,
-        whatsappNumber: whatsappNumberInput.trim() || userPhone,
-        title,
-        description,
-        price: Number(price),
-        isNegotiable: isNegotiable,
-        category: category || 'Other',
-        condition,
-        images: [imageUrl],
-        state: stateName,
-        city: cityName,
+        sellerName: user.displayName || user.email?.split('@')[0] || 'Verified Seller',
+        sellerPhone: userPhone || '',
+        whatsappNumber: whatsappNumberInput.trim() || userPhone || '',
+        title: title.trim(),
+        description: description.trim(),
+        price: Number(price) || 0,
+        isNegotiable: Boolean(isNegotiable),
+        category: category.trim() || 'Other',
+        condition: condition || 'tokunbo',
+        images: [finalImageUrl],
+        state: stateName || 'Lagos',
+        city: cityName.trim() || 'Lagos',
         status: 'active',
-        isDistressSale: isDistressSale,
-        distressReason: isDistressSale ? distressReason : undefined,
-        videoUrl: finalVideoUrl || undefined,
-        recommendedArtisanTrade: recommendedTradeInput.trim() || undefined,
+        isDistressSale: Boolean(isDistressSale),
         createdAt: Date.now()
       };
 
-      await addDoc(collection(db, 'marketplace_items'), newItem);
+      if (isDistressSale && distressReason) {
+        cleanItemData.distressReason = distressReason;
+      }
+      if (finalVideoUrl) {
+        cleanItemData.videoUrl = finalVideoUrl;
+      }
+      if (recommendedTradeInput.trim()) {
+        cleanItemData.recommendedArtisanTrade = recommendedTradeInput.trim();
+      }
+      if (user.avatar) {
+        cleanItemData.sellerAvatar = user.avatar;
+      }
+
+      await addDoc(collection(db, 'marketplace_items'), cleanItemData);
       setIsPosting(false);
-      toast.success('Your ad has been posted live on 9jaKonet Marketplace!');
+      toast.success('🎉 Your ad has been posted live on 9jaKonet Marketplace!');
       
-      // Check bank setup
-      const bankName = userDoc.exists() ? userDoc.data().bankName : null;
-      if (!bankName || bankName === 'Not Set' || bankName === '') {
-        setTimeout(() => {
-          toast.info('Item Posted! Please click "Bank Details" to set up your payout account.');
-        }, 800);
+      // Check bank setup in background
+      try {
+        const uDoc = await getDoc(doc(db, 'users', user.id));
+        const bankName = uDoc.exists() ? uDoc.data().bankName : null;
+        if (!bankName || bankName === 'Not Set' || bankName === '') {
+          setTimeout(() => {
+            toast.info('Item Posted! Click your Profile to add bank details for instant payouts.');
+          }, 800);
+        }
+      } catch (bankErr) {
+        // non-blocking
       }
       
       // Reset form
-      setTitle(''); setDescription(''); setPrice(''); setCityName(''); setCategory(''); setSelectedImage(null);
-      setSelectedVideoFile(null); setVideoUrlInput(''); setWhatsappNumberInput('');
-      setIsDistressSale(false); setRecommendedTradeInput('');
+      setTitle(''); 
+      setDescription(''); 
+      setPrice(''); 
+      setCityName(''); 
+      setCategory(''); 
+      setSelectedImage(null);
+      setImagePreviewUrl(null);
+      setSelectedVideoFile(null); 
+      setVideoUrlInput(''); 
+      setWhatsappNumberInput('');
+      setIsDistressSale(false); 
+      setRecommendedTradeInput('');
       setIsNegotiable(true);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to post ad. Please try again.');
+    } catch (err: any) {
+      console.error('Failed to post ad:', err);
+      toast.error('Failed to post ad: ' + (err?.message || 'Please check your connection and try again.'));
     } finally {
       setIsSubmitting(false);
+      setPostingStatusText('Posting Ad...');
     }
   };
 
@@ -1513,14 +1628,59 @@ export default function Marketplace() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Item Photo</label>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  required
-                  onChange={(e) => setSelectedImage(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
-                />
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Item Photo <span className="text-red-500">*</span>
+                </label>
+                
+                {imagePreviewUrl ? (
+                  <div className="relative rounded-xl border border-emerald-200 bg-emerald-50/50 p-2.5 flex items-center gap-3">
+                    <img 
+                      src={imagePreviewUrl} 
+                      alt="Listing preview" 
+                      className="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-xs shrink-0" 
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">
+                        {selectedImage?.name || 'Photo selected'}
+                      </p>
+                      <p className="text-[11px] text-emerald-700 font-medium">
+                        ✓ Ready to upload (Auto-optimized)
+                      </p>
+                      <label className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline inline-block mt-0.5">
+                        Change photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleImageChange(null)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-full hover:bg-white transition-colors"
+                      title="Remove image"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/30 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors group">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-700">Click to choose item photo</span>
+                    <span className="text-[10px] text-slate-400">JPEG, PNG, WEBP from your phone gallery or camera</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      required={!imagePreviewUrl}
+                      onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
 
               <div>
@@ -1730,11 +1890,11 @@ export default function Marketplace() {
                 />
               </div>
 
-              <Button type="submit" disabled={isSubmitting} className="w-full bg-emerald-600 hover:bg-emerald-700 h-11 text-sm font-bold">
+              <Button type="submit" disabled={isSubmitting} className="w-full bg-emerald-600 hover:bg-emerald-700 h-11 text-sm font-bold shadow-md transition-all">
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Posting Ad...
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-white" />
+                    {postingStatusText}
                   </>
                 ) : 'Post Ad for Free'}
               </Button>
