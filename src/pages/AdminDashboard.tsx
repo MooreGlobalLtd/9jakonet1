@@ -5,7 +5,7 @@ import { User, ArtisanProfile, EscrowContract } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send, Zap, Radio, Headphones, Gift } from 'lucide-react';
+import { Users, ShieldCheck, Clock, CheckCircle, Banknote, ArrowUpRight, Search, RotateCcw, X, ChevronRight, Filter, AlertCircle, Phone, Mail, MapPin, Camera, FileText, ShieldAlert, Eye, Navigation, Trash2, Bell, Smartphone, Send, Zap, Radio, Headphones, Gift, ArrowLeftRight, Briefcase } from 'lucide-react';
 import { sendEmail } from '../lib/email';
 import { formatDateTime } from '../lib/utils';
 import { isQuotaExhausted, markQuotaExhausted } from '../lib/quotaManager';
@@ -71,6 +71,45 @@ export default function AdminDashboard() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; action: () => void } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string; defaultText: string; action: (value: string) => void } | null>(null);
+
+  // Role Switcher Modal state (Customer ⇄ Artisan)
+  const [roleModalUser, setRoleModalUser] = useState<User | null>(null);
+  const [targetNewRole, setTargetNewRole] = useState<'artisan' | 'customer'>('artisan');
+  const [tradeCategoryInput, setTradeCategoryInput] = useState('General Artisan');
+  const [customTradeInput, setCustomTradeInput] = useState('');
+  const [isSwitchingRole, setIsSwitchingRole] = useState(false);
+
+  const POPULAR_TRADES = [
+    "General Artisan",
+    "Tailor/Fashion Designer",
+    "Hair Stylist",
+    "Makeup Artist",
+    "Electrician",
+    "Plumber",
+    "Mechanic",
+    "AC Technician",
+    "Carpenter",
+    "Painter",
+    "Catering & Chef",
+    "Cleaner",
+    "Tiler",
+    "Welder",
+    "Auto Electrician",
+    "Inverter/Solar Installer",
+    "CCTV Installer",
+    "Interior Decorator",
+    "Barber",
+    "Aluminum Fabricator",
+    "Mason/Bricklayer",
+    "Generator Mechanic",
+    "Borehole Driller",
+    "Fumigator",
+    "Photographer",
+    "Videographer",
+    "Vulcanizer",
+    "Plaster of Paris (POP) Designer",
+    "Other (Specify Below)"
+  ];
 
   // Subscribe to all viral referrals
   useEffect(() => {
@@ -484,6 +523,111 @@ export default function AdminDashboard() {
         }
       }
     });
+  };
+
+  const openRoleModal = (targetUser: User, forceRole?: 'artisan' | 'customer') => {
+    const defaultNextRole: 'artisan' | 'customer' = forceRole || (targetUser.role === 'artisan' ? 'customer' : 'artisan');
+    const existingArtisan = artisans.find(a => a.userId === targetUser.id || a.id === targetUser.id);
+    
+    setRoleModalUser(targetUser);
+    setTargetNewRole(defaultNextRole);
+    setTradeCategoryInput(existingArtisan?.tradeCategory || 'General Artisan');
+    setCustomTradeInput('');
+  };
+
+  const handleExecuteRoleChange = async () => {
+    if (!roleModalUser) return;
+    setIsSwitchingRole(true);
+    try {
+      const targetUserId = roleModalUser.id;
+      const finalTrade = (tradeCategoryInput === 'Other (Specify Below)' && customTradeInput.trim()) 
+        ? customTradeInput.trim() 
+        : (tradeCategoryInput.trim() || 'General Artisan');
+
+      if (targetNewRole === 'artisan') {
+        // 1. Ensure artisan profile document exists in 'artisans'
+        const artisanRef = doc(db, 'artisans', targetUserId);
+        const artisanSnap = await getDoc(artisanRef);
+
+        if (!artisanSnap.exists()) {
+          const newArtisanProfile = {
+            id: targetUserId,
+            userId: targetUserId,
+            businessName: roleModalUser.displayName || 'Verified Artisan',
+            tradeCategory: finalTrade,
+            yearsExp: 2,
+            rating: 5.0,
+            completedJobsCount: 0,
+            serviceAreas: [roleModalUser.state || 'Lagos'],
+            state: roleModalUser.state || 'Lagos',
+            city: roleModalUser.address || '',
+            address: roleModalUser.address || '',
+            phoneNumber: roleModalUser.phoneNumber || '',
+            verificationStatus: (roleModalUser.isKycVerified || roleModalUser.kyc?.status === 'verified') ? 'verified' : 'pending',
+            createdAt: Date.now()
+          };
+          await setDoc(artisanRef, newArtisanProfile);
+          setArtisans(prev => [newArtisanProfile as any, ...prev]);
+        } else {
+          await updateDoc(artisanRef, {
+            tradeCategory: finalTrade,
+            businessName: roleModalUser.displayName || artisanSnap.data()?.businessName || 'Verified Artisan'
+          });
+          setArtisans(prev => prev.map(a => (a.userId === targetUserId || a.id === targetUserId) ? { ...a, tradeCategory: finalTrade } : a));
+        }
+
+        // 2. Update user document
+        await updateDoc(doc(db, 'users', targetUserId), {
+          role: 'artisan'
+        });
+
+        // 3. Post in-app notification
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            userId: targetUserId,
+            type: 'role_updated',
+            title: 'Account Switched to Artisan 🛠️',
+            message: `Your account role has been updated to Artisan (${finalTrade}) by 9jaKonet Admin. You can now accept client bookings and manage your artisan profile!`,
+            read: false,
+            createdAt: Date.now()
+          });
+        } catch (e) {
+          console.warn('Could not post notification:', e);
+        }
+
+        setUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: 'artisan' } : u));
+        toast.success(`🎉 ${roleModalUser.displayName || roleModalUser.email} has been switched to an Artisan account (${finalTrade})!`);
+      } else {
+        // Switch to customer
+        await updateDoc(doc(db, 'users', targetUserId), {
+          role: 'customer'
+        });
+
+        // Post in-app notification
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            userId: targetUserId,
+            type: 'role_updated',
+            title: 'Account Switched to Customer 🛍️',
+            message: 'Your account role has been updated to Customer. You can now hire verified artisans and buy items safely with escrow protection.',
+            read: false,
+            createdAt: Date.now()
+          });
+        } catch (e) {
+          console.warn('Could not post notification:', e);
+        }
+
+        setUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: 'customer' } : u));
+        toast.success(`✅ ${roleModalUser.displayName || roleModalUser.email} has been switched to a Customer account.`);
+      }
+
+      setRoleModalUser(null);
+    } catch (error: any) {
+      console.error("Error switching user role:", error);
+      toast.error("Failed to switch account role: " + (error?.message || 'Database error'));
+    } finally {
+      setIsSwitchingRole(false);
+    }
   };
 
   const handleResetSingleUserBalance = async (targetUser: User) => {
@@ -1569,13 +1713,26 @@ export default function AdminDashboard() {
                                 Support Agent
                               </span>
                             ) : (
-                              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
-                                u.role === 'artisan' ? 'bg-blue-100 text-blue-800' :
-                                u.role === 'customer' ? 'bg-purple-100 text-purple-800' :
-                                'bg-emerald-100 text-emerald-800'
-                              }`}>
-                                {u.role}
-                              </span>
+                              <div>
+                                <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold capitalize ${
+                                  u.role === 'artisan' ? 'bg-blue-100 text-blue-800' :
+                                  u.role === 'customer' ? 'bg-purple-100 text-purple-800' :
+                                  'bg-emerald-100 text-emerald-800'
+                                }`}>
+                                  {u.role}
+                                </span>
+                                {u.role !== 'admin' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openRoleModal(u)}
+                                    className="mt-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-0.5"
+                                    title="Change account between Customer and Artisan"
+                                  >
+                                    <ArrowLeftRight className="h-2.5 w-2.5" />
+                                    {u.role === 'artisan' ? 'Switch to Customer' : 'Switch to Artisan'}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -1641,6 +1798,20 @@ export default function AdminDashboard() {
                                 Revoke Admin
                               </Button>
                             )}
+                            {/* Change between Artisan and Customer */}
+                            {u.role !== 'admin' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openRoleModal(u)}
+                                className="h-7 text-[11px] border-indigo-200 text-indigo-700 hover:bg-indigo-50 mr-2 inline-flex items-center gap-1"
+                                title="Switch account between Artisan and Customer"
+                              >
+                                <ArrowLeftRight className="h-3 w-3" />
+                                {u.role === 'artisan' ? 'To Customer' : 'To Artisan'}
+                              </Button>
+                            )}
+
                             {(u.walletBalance || 0) > 0 ? (
                               <Button
                                 size="sm"
@@ -1686,6 +1857,7 @@ export default function AdminDashboard() {
                         <th className="px-4 py-3">Jobs Completed</th>
                         <th className="px-4 py-3">Rating</th>
                         <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1723,6 +1895,20 @@ export default function AdminDashboard() {
                                 <CheckCircle className="h-3 w-3" /> Verified
                               </span>
                             </td>
+                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                              {artisanUser && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openRoleModal(artisanUser, 'customer')}
+                                  className="h-7 text-[11px] border-purple-200 text-purple-700 hover:bg-purple-50 font-semibold inline-flex items-center gap-1"
+                                  title="Switch this artisan to a Customer account"
+                                >
+                                  <ArrowLeftRight className="h-3 w-3" />
+                                  To Customer
+                                </Button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -1745,6 +1931,7 @@ export default function AdminDashboard() {
                         <th className="px-4 py-3">State &amp; Address</th>
                         <th className="px-4 py-3">Registered At</th>
                         <th className="px-4 py-3">Wallet / Escrow Balance</th>
+                        <th className="px-4 py-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1768,6 +1955,17 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3 font-semibold text-slate-900">
                             ₦{(customer.walletBalance || 0).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <Button
+                              size="sm"
+                              onClick={() => openRoleModal(customer, 'artisan')}
+                              className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1"
+                              title="Convert this customer to an Artisan account"
+                            >
+                              <ArrowLeftRight className="h-3 w-3" />
+                              Convert to Artisan
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -1904,6 +2102,17 @@ export default function AdminDashboard() {
                                     }`}>
                                       {u.role}
                                     </span>
+                                    {u.role !== 'admin' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openRoleModal(u)}
+                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-0.5 ml-1"
+                                        title="Change account between Artisan and Customer"
+                                      >
+                                        <ArrowLeftRight className="h-2.5 w-2.5" />
+                                        {u.role === 'artisan' ? 'Make Customer' : 'Make Artisan'}
+                                      </button>
+                                    )}
                                     {artisans.some(a => a.userId === u.id || a.id === u.id) && (
                                       <span className="inline-block px-1.5 py-0.5 text-[10px] rounded font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                                         Has Artisan Profile
@@ -2738,6 +2947,161 @@ export default function AdminDashboard() {
                 promptDialog.action(val);
                 setPromptDialog(null);
               }}>Submit</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Role Switcher Modal (Artisan ⇄ Customer) */}
+      {roleModalUser && (
+        <div className="fixed inset-0 z-[115] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl relative border border-slate-200">
+            <button
+              onClick={() => setRoleModalUser(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                <ArrowLeftRight className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Change Account Type</h3>
+                <p className="text-xs text-slate-500">Switch user between Customer and Artisan</p>
+              </div>
+            </div>
+
+            {/* Target user details */}
+            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-sm text-slate-900">{roleModalUser.displayName || 'Unnamed User'}</p>
+                  <p className="text-xs text-slate-500">{roleModalUser.email}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Role</span>
+                  <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-bold capitalize ${
+                    roleModalUser.role === 'artisan' ? 'bg-blue-100 text-blue-800' :
+                    roleModalUser.role === 'customer' ? 'bg-purple-100 text-purple-800' :
+                    'bg-slate-100 text-slate-800'
+                  }`}>
+                    {roleModalUser.role}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Select Target Role */}
+            <div className="space-y-2.5 mb-4">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                Select New Account Type
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setTargetNewRole('artisan')}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    targetNewRole === 'artisan'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-900 ring-2 ring-blue-500/20 shadow-xs'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      🛠️ Artisan Account
+                    </span>
+                    {targetNewRole === 'artisan' && <CheckCircle className="h-4 w-4 text-blue-600 shrink-0" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Can receive bookings, get hired, and earn money.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetNewRole('customer')}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    targetNewRole === 'customer'
+                      ? 'border-purple-600 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500/20 shadow-xs'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      🛍️ Customer Account
+                    </span>
+                    {targetNewRole === 'customer' && <CheckCircle className="h-4 w-4 text-purple-600 shrink-0" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Hires verified artisans and shops on marketplace.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* If switching to artisan, specify or select Trade Category */}
+            {targetNewRole === 'artisan' && (
+              <div className="space-y-3 bg-blue-50/50 p-3.5 rounded-xl border border-blue-100 mb-5">
+                <div>
+                  <label className="text-xs font-bold text-slate-800 block mb-1">
+                    Artisan Trade / Skill Category:
+                  </label>
+                  <select
+                    value={tradeCategoryInput}
+                    onChange={(e) => setTradeCategoryInput(e.target.value)}
+                    className="w-full text-xs font-medium border border-slate-300 rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    {POPULAR_TRADES.map((trade) => (
+                      <option key={trade} value={trade}>{trade}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {tradeCategoryInput === 'Other (Specify Below)' && (
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                      Specify Custom Trade:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bead Maker, Makeup Artist, Solar Engineer"
+                      value={customTradeInput}
+                      onChange={(e) => setCustomTradeInput(e.target.value)}
+                      className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-blue-700">
+                  💡 The user can also update their profile pictures, bio, and experience anytime.
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                disabled={isSwitchingRole}
+                onClick={() => setRoleModalUser(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isSwitchingRole}
+                onClick={handleExecuteRoleChange}
+                className={`flex-1 text-white font-bold ${
+                  targetNewRole === 'artisan'
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-purple-600 hover:bg-purple-700'
+                }`}
+              >
+                {isSwitchingRole ? 'Updating Account...' : `Confirm Switch to ${targetNewRole === 'artisan' ? 'Artisan' : 'Customer'}`}
+              </Button>
             </div>
           </div>
         </div>
