@@ -31,6 +31,7 @@ import VerificationKYC from './pages/VerificationKYC';
 import SupportDesk from './pages/SupportDesk';
 import Referrals from './pages/Referrals';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -82,7 +83,8 @@ export default function App() {
     <BrowserRouter>
       <Toaster position="top-center" richColors />
       <PWAInstallButton variant="banner" />
-      <Routes>
+      <ErrorBoundary>
+        <Routes>
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Home />} />
           <Route path="how-it-works" element={<HowItWorks />} />
@@ -162,6 +164,7 @@ export default function App() {
           } />
         </Route>
       </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

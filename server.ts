@@ -192,6 +192,31 @@ async function startServer() {
   // Web Push Notification & Device Endpoints
   // ==========================================
 
+  // Dedicated Service Worker Endpoint (Always delivers Workbox offline + Web Push handlers)
+  app.get(['/sw.js', '/service-worker.js'], (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    const publicSw = path.join(process.cwd(), 'public', 'sw.js');
+    const distSw = path.join(process.cwd(), 'dist', 'sw.js');
+
+    let baseCode = '';
+    if (fs.existsSync(publicSw)) {
+      baseCode = fs.readFileSync(publicSw, 'utf-8');
+    }
+
+    if (fs.existsSync(distSw)) {
+      const distCode = fs.readFileSync(distSw, 'utf-8');
+      if (distCode.includes("addEventListener('push'")) {
+        return res.send(distCode);
+      }
+      return res.send(`${distCode}\n\n/* 9jaKonet Mobile Push Listeners */\n${baseCode}`);
+    }
+
+    res.send(baseCode);
+  });
+
   // 1. Get Public VAPID Key for client PushManager subscription
   app.get('/api/push/vapid-public-key', (req, res) => {
     res.json({

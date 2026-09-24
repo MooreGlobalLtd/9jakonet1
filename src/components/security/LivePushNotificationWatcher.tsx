@@ -23,27 +23,40 @@ export default function LivePushNotificationWatcher() {
 
   // 1. Check support, register worker, auto-subscribe if permitted, and prompt banner
   useEffect(() => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
+    if (typeof window === 'undefined') return;
+
+    const hasNotification = 'Notification' in window;
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+
+    if (!hasNotification && !isIos) {
       setPermission('unsupported');
       return;
     }
 
-    setPermission(Notification.permission);
-    registerNotificationServiceWorker();
+    if (hasNotification) {
+      setPermission(Notification.permission);
+      registerNotificationServiceWorker();
 
-    // If permission was already granted, ensure Web Push subscription is registered & synced
-    if (Notification.permission === 'granted') {
-      subscribeDeviceToPush(user?.id);
-    } else if (Notification.permission === 'default') {
-      // Display the activation prompt after a short delay
-      const timer = setTimeout(() => {
-        const dismissed = localStorage.getItem('9jakonet_notif_prompt_dismissed');
-        if (!dismissed) {
+      if (Notification.permission === 'granted') {
+        subscribeDeviceToPush(user?.id);
+      }
+    }
+
+    // Display the prompt after 2 seconds if not granted and not previously dismissed
+    const timer = setTimeout(() => {
+      const dismissed = localStorage.getItem('9jakonet_notif_prompt_dismissed');
+      if (!dismissed) {
+        if (!hasNotification && isIos && !isStandalone) {
+          // iOS Safari needs to explain Add to Home Screen first
+          setShowPromptBanner(true);
+        } else if (hasNotification && Notification.permission === 'default') {
           setShowPromptBanner(true);
         }
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, [user?.id]);
 
   // 2. Safely sync push active status and userId to server and user document
@@ -276,13 +289,16 @@ export default function LivePushNotificationWatcher() {
     localStorage.setItem('9jakonet_notif_prompt_dismissed', 'true');
   };
 
-  if (!showPromptBanner || permission !== 'default') {
+  const isIos = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
+
+  if (!showPromptBanner || permission === 'granted') {
     return null;
   }
 
-  // Check if iOS non-standalone (where PWA installation is required for push)
-  const isIos = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
+  if (permission === 'unsupported' && !isIos) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50 bg-slate-900 text-white rounded-2xl shadow-2xl p-4 border border-emerald-500/30 flex items-start gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -291,7 +307,7 @@ export default function LivePushNotificationWatcher() {
       </div>
       <div className="flex-1 text-xs">
         <div className="flex items-center justify-between">
-          <p className="font-bold text-sm text-emerald-400">Receive Updates On Your Phone</p>
+          <p className="font-bold text-sm text-emerald-400">Receive Lock Screen Alerts</p>
           <button onClick={handleDismiss} className="text-slate-400 hover:text-white p-1" title="Close">
             <X className="h-4 w-4" />
           </button>
@@ -300,30 +316,40 @@ export default function LivePushNotificationWatcher() {
           Get real-time pop-up alerts on your phone for new messages, jobs, and platform updates—even when the app is closed.
         </p>
 
-        {isIos && !isStandalone && (
-          <div className="mt-2 p-2 bg-emerald-950/60 rounded-lg border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center gap-1.5">
-            <Smartphone className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-            <span>iPhone tip: Tap Share ➔ <strong>&apos;Add to Home Screen&apos;</strong> to enable phone lock-screen alerts!</span>
+        {isIos && !isStandalone ? (
+          <div className="mt-2.5 p-3 bg-slate-800/90 rounded-xl border border-emerald-500/40 text-[11px] text-slate-200 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+              <Smartphone className="h-4 w-4 shrink-0" />
+              <span>iPhone Lock Screen Setup</span>
+            </div>
+            <p className="text-slate-300 text-[11px]">
+              Apple requires saving to Home Screen to allow lock screen push alerts:
+            </p>
+            <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px]">
+              <li>Tap the <strong>Share</strong> button (⬆) at the bottom</li>
+              <li>Tap <strong>&apos;Add to Home Screen&apos;</strong> (+)</li>
+              <li>Open 9jaKonet from your Home Screen &amp; tap <strong>&apos;Allow Alerts&apos;</strong></li>
+            </ol>
+          </div>
+        ) : (
+          <div className="mt-3 flex items-center gap-2">
+            <Button 
+              size="sm" 
+              onClick={handleEnableNotifications}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold h-8 rounded-lg shadow-md cursor-pointer"
+            >
+              Turn On Phone Alerts
+            </Button>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={handleDismiss}
+              className="text-slate-400 hover:text-white text-xs h-8 cursor-pointer"
+            >
+              Later
+            </Button>
           </div>
         )}
-
-        <div className="mt-3 flex items-center gap-2">
-          <Button 
-            size="sm" 
-            onClick={handleEnableNotifications}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold h-8 rounded-lg shadow-md cursor-pointer"
-          >
-            Turn On Phone Alerts
-          </Button>
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            onClick={handleDismiss}
-            className="text-slate-400 hover:text-white text-xs h-8 cursor-pointer"
-          >
-            Later
-          </Button>
-        </div>
       </div>
     </div>
   );

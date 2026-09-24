@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "9jaKonet NG - Hire Verified Artisans",
+  "short_name": "9jaKonet",
+  "description": "Local services marketplace connecting verified artisans with customers in Nigeria. Payments secured by Paystack Escrow.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#059669",
+  "background_color": "#ffffff",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
